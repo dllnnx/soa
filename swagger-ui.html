@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Movie + Oscar Service API - Swagger UI</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; }
+    .spec-bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #1b5c8a; color: #fff; font-family: sans-serif; }
+    .spec-bar select { padding: 4px 8px; border-radius: 4px; border: none; }
+  </style>
+</head>
+<body>
+<div class="spec-bar">
+  <label for="spec-select">Спецификация:</label>
+  <select id="spec-select">
+    <option value="movies" selected>Movie Service API</option>
+    <option value="oscar">Oscar Service API</option>
+  </select>
+</div>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+<script>
+  var SPECS = { movies: "moviesApi.yaml", oscar: "oscarApi.yaml" };
+  function build() {
+    var sel = document.getElementById("spec-select");
+    window.ui = SwaggerUIBundle({
+      url: SPECS[sel.value],
+      dom_id: "#swagger-ui",
+      deepLinking: true,
+      docExpansion: "list",
+      filter: true,
+      tryItOutEnabled: true,
+      validatorUrl: null
+    });
+  }
+  window.onload = function () {
+    document.getElementById("spec-select").onchange = function () {
+      document.getElementById("swagger-ui").innerHTML = "";
+      build();
+    };
+    build();
+  };
+</script>
+</body>
+</html>

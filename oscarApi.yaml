@@ -1,0 +1,144 @@
+openapi: 3.0.3
+info:
+  title: Oscar Service API
+  version: 1.0.0
+  description: |
+    Управление Оскарами
+servers:
+  - url: http://localhost:8080
+    description: локальный сервер
+tags:
+  - name: Oscar
+    description: Управление Оскарами
+paths:
+  /oscar/movies/reward-r:
+    patch:
+      tags:
+        - Oscar
+      operationId: rewardRMovies
+      summary: Добавить всем фильмам категории R по одному Оскару
+      description: Увеличивает oscarsCount на 1 у всех фильмов с рейтингом R и возвращает количество измененных.
+      responses:
+        '200':
+          description: Оскары выданы.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatedMoviesCount'
+        '400':
+          $ref: '#/components/responses/BadRequest400'
+  /oscar/directors/humiliate-by-genre/{genre}:
+    patch:
+      tags:
+        - Oscar
+      operationId: humiliateDirectorsByGenre
+      summary: Отобрать все Оскары у фильмов сценаристов, снимавших в заданном жанре
+      description: Обнуляет oscarsCount у всех фильмов сценаристов, имеющих хотя бы один фильм в заданном жанре.
+      parameters:
+        - name: genre
+          in: path
+          required: true
+          description: Жанр фильма
+          schema:
+            $ref: '#/components/schemas/MovieGenre'
+      responses:
+        '200':
+          description: Оскары отобраны.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatedMoviesCount'
+        '400':
+          $ref: '#/components/responses/BadRequest400'
+components:
+  schemas:
+    MovieGenre:
+      type: string
+      description: Жанр фильма.
+      enum:
+        - WESTERN
+        - ADVENTURE
+        - TRAGEDY
+        - SCIENCE_FICTION
+    MpaaRating:
+      type: string
+      description: Возрастной рейтинг MPAA.
+      enum:
+        - G
+        - PG
+        - PG_13
+        - R
+        - NC_17
+    UpdatedMoviesCount:
+      type: object
+      description: Результат массовой операции сервиса /oscar.
+      additionalProperties: false
+      required:
+        - updatedCount
+      properties:
+        updatedCount:
+          type: integer
+          format: int64
+          description: Количество измененных фильмов.
+          minimum: 0
+    FieldError:
+      type: object
+      additionalProperties: false
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+          description: Текст нарушения ограничения.
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+        - timestamp
+        - status
+        - code
+        - message
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          description: HTTP-статус.
+          enum:
+            - 400
+            - 404
+            - 422
+        code:
+          type: string
+          enum:
+            - MALFORMED_JSON
+            - INVALID_PARAMETER
+            - UNKNOWN_PARAMETER
+            - INVALID_SORT_EXPRESSION
+            - UNKNOWN_PROPERTY
+            - READ_ONLY_FIELD
+            - MOVIE_NOT_FOUND
+            - NO_MATCHING_MOVIE
+            - VALIDATION_FAILED
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+  responses:
+    BadRequest400:
+      description: Невалидный запрос.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            timestamp: '2026-09-22T12:00:00Z'
+            status: 400
+            code: INVALID_PARAMETER
+            message: 'Жанр должен быть одним из WESTERN, ADVENTURE, TRAGEDY, SCIENCE_FICTION'
