@@ -11,13 +11,13 @@ tags:
   - name: Movies
     description: Управление коллекцией фильмов
 paths:
-  /movies/list:
+  /movies/filter:
     post:
       tags:
         - Movies
-      operationId: listMovies
+      operationId: filterMovies
       summary: Получить список фильмов
-      description: Возвращает постраничную выборку фильмов с фильтрацией и сортировкой по любой комбинации полей.
+      description: Возвращает постраничную выборку фильмов с фильтрацией (строки — подстрока без учёта регистра, даты — раньше/позже, числа — строго больше/меньше, ids и genres — любой из списка), сортировкой и пагинацией.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/SizeParam'
@@ -29,10 +29,11 @@ paths:
             schema:
               $ref: '#/components/schemas/MovieFilter'
             example:
-              genre: SCIENCE_FICTION
-              budget: null
-              screenwriter:
-                name: Christopher Nolan
+              name: интер
+              genres:
+                - SCIENCE_FICTION
+                - ADVENTURE
+              oscarsCountFrom: 1
       responses:
         '200':
           description: Список фильмов получен.
@@ -42,7 +43,7 @@ paths:
                 $ref: '#/components/schemas/MoviePage'
         '400':
           $ref: '#/components/responses/BadRequest400'
-  /movies/add:
+  /movies:
     post:
       tags:
         - Movies
@@ -335,112 +336,143 @@ components:
           $ref: '#/components/schemas/Location'
     CoordinatesFilter:
       type: object
-      description: Фильтр по координатам.
+      description: Фильтр по координатам (From/To — строго больше/меньше).
       additionalProperties: false
       properties:
-        x:
+        xFrom:
           type: number
           format: double
-          description: Точное совпадение coordinates.x.
+          description: coordinates.x строго больше указанного.
           minimum: -130
           exclusiveMinimum: true
-        y:
+        xTo:
           type: number
           format: double
-          description: Точное совпадение coordinates.y.
+          description: coordinates.x строго меньше указанного.
+        yFrom:
+          type: number
+          format: double
+          description: coordinates.y строго больше указанного.
+        yTo:
+          type: number
+          format: double
+          description: coordinates.y строго меньше указанного.
           maximum: 388
     LocationFilter:
       type: object
-      description: Фильтр по местоположению.
+      description: Фильтр по местоположению (From/To — строго больше/меньше).
       additionalProperties: false
       properties:
-        x:
+        xFrom:
           type: number
           format: float
-          description: Точное совпадение location.x.
-        y:
+          description: location.x строго больше указанного.
+        xTo:
+          type: number
+          format: float
+          description: location.x строго меньше указанного.
+        yFrom:
           type: integer
           format: int32
-          description: Точное совпадение location.y.
-        z:
+          description: location.y строго больше указанного.
+        yTo:
+          type: integer
+          format: int32
+          description: location.y строго меньше указанного.
+        zFrom:
           type: integer
           format: int64
-          description: Точное совпадение location.z.
+          description: location.z строго больше указанного.
+        zTo:
+          type: integer
+          format: int64
+          description: location.z строго меньше указанного.
     PersonFilter:
       type: object
-      description: Фильтр по сценаристу.
+      description: Фильтр по сценаристу (From/To — строго больше/меньше).
       additionalProperties: false
       properties:
         name:
           type: string
-          description: Точное совпадение имени.
+          description: Подстрока имени без учёта регистра.
           minLength: 1
           maxLength: 255
           pattern: '^[a-zA-Zа-яА-ЯЁё0-9 .,:!?()&-]{1,255}$'
-        height:
+        heightFrom:
           type: number
           format: double
-          description: Точное совпадение роста.
+          description: height строго больше указанного.
           minimum: 0
           exclusiveMinimum: true
+        heightTo:
+          type: number
+          format: double
+          description: height строго меньше указанного.
         eyeColor:
           $ref: '#/components/schemas/EyeColor'
         hairColor:
-          type: string
-          description: Точное совпадение цвета волос.
-          nullable: true
-          enum:
-            - GREEN
-            - RED
-            - BLACK
-            - YELLOW
-            - ORANGE
+          $ref: '#/components/schemas/HairColor'
         nationality:
           $ref: '#/components/schemas/Country'
         location:
           $ref: '#/components/schemas/LocationFilter'
     MovieFilter:
       type: object
-      description: Фильтры точного совпадения для POST /movies/list.
+      description: Фильтры для POST /movies/filter (From/To — строго больше/меньше).
       additionalProperties: false
       properties:
-        id:
-          type: integer
-          format: int32
-          description: Точное совпадение id.
-          minimum: 1
+        ids:
+          type: array
+          description: Список идентификаторов, возвращаются фильмы с любым из них.
+          items:
+            type: integer
+            format: int32
+            minimum: 1
         name:
           type: string
-          description: Точное совпадение названия.
+          description: Подстрока названия без учёта регистра.
           minLength: 1
           maxLength: 255
           pattern: '^[a-zA-Zа-яА-ЯЁё0-9 .,:!?()&-]{1,255}$'
         coordinates:
           $ref: '#/components/schemas/CoordinatesFilter'
-        creationDate:
+        creationDateBefore:
           type: string
           format: date-time
-          description: Точное совпадение creationDate.
-        oscarsCount:
+          description: creationDate строго раньше указанной даты.
+        creationDateAfter:
+          type: string
+          format: date-time
+          description: creationDate строго позже указанной даты.
+        oscarsCountFrom:
           type: integer
           format: int64
-          description: Точное совпадение oscarsCount.
+          description: oscarsCount строго больше указанного.
           minimum: 0
-        budget:
+        oscarsCountTo:
+          type: integer
+          format: int64
+          description: oscarsCount строго меньше указанного.
+          minimum: 0
+        budgetFrom:
           type: integer
           format: int32
-          description: Точное совпадение budget, null - фильмы без бюджета.
+          description: budget строго больше указанного.
           minimum: 1
-          nullable: true
-        genre:
-          $ref: '#/components/schemas/MovieGenre'
+        budgetTo:
+          type: integer
+          format: int32
+          description: budget строго меньше указанного.
+          minimum: 1
+        genres:
+          type: array
+          description: Список жанров, возвращаются фильмы с любым из них.
+          items:
+            $ref: '#/components/schemas/MovieGenre'
         mpaaRating:
           $ref: '#/components/schemas/MpaaRating'
         screenwriter:
-          description: Фильтр по сценаристу, null - фильмы без сценариста.
-          nullable: true
-          allOf:
-            - $ref: '#/components/schemas/PersonFilter'
+          $ref: '#/components/schemas/PersonFilter'
     MovieInput:
       type: object
       description: Данные фильма для добавления и обновления.

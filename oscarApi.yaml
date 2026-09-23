@@ -12,28 +12,28 @@ tags:
     description: Управление Оскарами
 paths:
   /oscar/movies/reward-r:
-    patch:
+    post:
       tags:
         - Oscar
       operationId: rewardRMovies
       summary: Добавить всем фильмам категории R по одному Оскару
-      description: Увеличивает oscarsCount на 1 у всех фильмов с рейтингом R и возвращает количество измененных.
+      description: Асинхронно увеличивает oscarsCount на 1 у всех фильмов с рейтингом R и возвращает идентификатор джобы со ссылкой на проверку статуса.
       responses:
-        '200':
-          description: Оскары выданы.
+        '202':
+          description: Джоба принята.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UpdatedMoviesCount'
+                $ref: '#/components/schemas/JobAccepted'
         '400':
           $ref: '#/components/responses/BadRequest400'
-  /oscar/directors/humiliate-by-genre/{genre}:
-    patch:
+  /oscar/movies/reset-oscars-by-genre/{genre}:
+    post:
       tags:
         - Oscar
-      operationId: humiliateDirectorsByGenre
+      operationId: resetOscarsByGenre
       summary: Отобрать все Оскары у фильмов сценаристов, снимавших в заданном жанре
-      description: Обнуляет oscarsCount у всех фильмов сценаристов, имеющих хотя бы один фильм в заданном жанре.
+      description: Асинхронно обнуляет oscarsCount у всех фильмов сценаристов, имеющих хотя бы один фильм в заданном жанре, и возвращает идентификатор джобы со ссылкой на проверку статуса.
       parameters:
         - name: genre
           in: path
@@ -42,14 +42,40 @@ paths:
           schema:
             $ref: '#/components/schemas/MovieGenre'
       responses:
-        '200':
-          description: Оскары отобраны.
+        '202':
+          description: Джоба принята.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UpdatedMoviesCount'
+                $ref: '#/components/schemas/JobAccepted'
         '400':
           $ref: '#/components/responses/BadRequest400'
+  /oscar/jobs/{job-id}/status:
+    get:
+      tags:
+        - Oscar
+      operationId: getJobStatus
+      summary: Проверить статус джобы
+      description: Возвращает статус джобы.
+      parameters:
+        - name: job-id
+          in: path
+          required: true
+          description: Идентификатор джобы (UUID).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Статус джобы.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest400'
+        '404':
+          $ref: '#/components/responses/JobNotFound404'
 components:
   schemas:
     MovieGenre:
@@ -60,15 +86,58 @@ components:
         - ADVENTURE
         - TRAGEDY
         - SCIENCE_FICTION
-    MpaaRating:
-      type: string
-      description: Возрастной рейтинг MPAA.
-      enum:
-        - G
-        - PG
-        - PG_13
-        - R
-        - NC_17
+    JobAccepted:
+      type: object
+      description: Принятая асинхронная операция.
+      additionalProperties: false
+      required:
+        - jobId
+        - statusUrl
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: Идентификатор джобы.
+        statusUrl:
+          type: string
+          description: Ссылка на метод проверки статуса джобы.
+          example: /oscar/jobs/3fa85f64-5717-4562-b3fc-2c963f66afa6/status
+    JobStatus:
+      type: object
+      description: Статус асинхронной операции.
+      additionalProperties: false
+      required:
+        - jobId
+        - status
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: Идентификатор джобы.
+        status:
+          type: string
+          description: Статус выполнения джобы.
+          enum:
+            - PENDING
+            - RUNNING
+            - COMPLETED
+            - FAILED
+        result:
+          description: Результат операции — количество изменённых фильмов при COMPLETED либо детали ошибки при FAILED.
+          nullable: true
+          oneOf:
+            - $ref: '#/components/schemas/UpdatedMoviesCount'
+            - $ref: '#/components/schemas/JobError'
+    JobError:
+      type: object
+      description: Детали ошибки упавшей джобы.
+      additionalProperties: false
+      required:
+        - errorMessage
+      properties:
+        errorMessage:
+          type: string
+          description: Сообщение об ошибке.
     UpdatedMoviesCount:
       type: object
       description: Результат массовой операции сервиса /oscar.
@@ -120,9 +189,9 @@ components:
             - UNKNOWN_PARAMETER
             - INVALID_SORT_EXPRESSION
             - UNKNOWN_PROPERTY
-            - READ_ONLY_FIELD
             - MOVIE_NOT_FOUND
             - NO_MATCHING_MOVIE
+            - JOB_NOT_FOUND
             - VALIDATION_FAILED
         message:
           type: string
@@ -142,3 +211,14 @@ components:
             status: 400
             code: INVALID_PARAMETER
             message: 'Жанр должен быть одним из WESTERN, ADVENTURE, TRAGEDY, SCIENCE_FICTION'
+    JobNotFound404:
+      description: Джоба с указанным идентификатором не найдена.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            timestamp: '2026-09-22T12:00:00Z'
+            status: 404
+            code: JOB_NOT_FOUND
+            message: 'Джоба с id=3fa85f64-5717-4562-b3fc-2c963f66afa6 не найдена'
