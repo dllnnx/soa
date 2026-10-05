@@ -1,0 +1,9 @@
+create-jdbc-connection-pool \
+  --datasourceclassname=org.postgresql.ds.PGSimpleDataSource \
+  --restype=javax.sql.DataSource \
+  --property="serverName=postgres:portNumber=5432:databaseName=movies:user=movies:password=movies" \
+  MoviesPool
+create-jdbc-resource --connectionpoolid=MoviesPool jdbc/MoviesDS
+
+# Пул готов — теперь деплой (HTTP 8080 — дефолтный http-listener-1)
+deploy --contextroot=/ --name=movies /opt/payara/movies.war

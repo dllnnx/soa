@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: movies
+      POSTGRES_USER: movies
+      POSTGRES_PASSWORD: movies
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movies -d movies"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  payara:
+    build:
+      context: ..
+      dockerfile: deploy/payara/Dockerfile
+    image: soa/movies-service
+    platform: linux/amd64
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  wildfly:
+    build:
+      context: ..
+      dockerfile: deploy/wildfly/Dockerfile
+    image: soa/oscars-service
+    environment:
+      MOVIES_SERVICE_URL: http://payara:8080
+    ports:
+      - "8480:8080"
+    depends_on:
+      - payara
+
+  frontend:
+    build: ../frontend
+    image: soa/frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - payara
+      - wildfly
+
+volumes:
+  pgdata:
