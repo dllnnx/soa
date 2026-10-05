@@ -1,12 +1,71 @@
 package ru.itmo.movies.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+
+import ru.itmo.movies.exception.ApiException;
+import ru.itmo.movies.model.AverageBudget;
+import ru.itmo.movies.model.DeleteResult;
+import ru.itmo.movies.model.ErrorCode;
+import ru.itmo.movies.model.Movie;
+import ru.itmo.movies.model.MovieFilter;
+import ru.itmo.movies.model.MovieInput;
+import ru.itmo.movies.model.MoviePage;
+import ru.itmo.movies.model.MpaaRating;
+import ru.itmo.movies.repository.MovieRepository;
+import ru.itmo.movies.repository.SortOrder;
+import ru.itmo.movies.validation.MovieValidator;
 
 @ApplicationScoped
 public class MovieService {
 
-    public Double getAverageBudget() {
-        // TODO: SELECT AVG(budget) FROM movie WHERE budget IS NOT NULL
-        return 0.0;
+    @Inject
+    private MovieRepository repository;
+
+    public Movie create(MovieInput input) {
+        MovieValidator.validateForCreate(input);
+        return repository.insert(input);
+    }
+
+    public Movie get(int id) {
+        return repository.find(id).orElseThrow(() -> movieNotFound(id));
+    }
+
+    public Movie update(int id, MovieInput input) {
+        MovieValidator.validateForUpdate(input);
+        Movie updated = repository.update(id, input);
+        if (updated == null) {
+            throw movieNotFound(id);
+        }
+        return updated;
+    }
+
+    public void delete(int id) {
+        if (!repository.delete(id)) {
+            throw movieNotFound(id);
+        }
+    }
+
+    public MoviePage filter(MovieFilter filter, int page, int size, SortOrder sort) {
+        MovieValidator.validateFilter(filter);
+        return repository.filter(filter, page, size, sort);
+    }
+
+    public AverageBudget getAverageBudget() {
+        return new AverageBudget(repository.averageBudget());
+    }
+
+    public DeleteResult deleteByMpaaRating(MpaaRating rating) {
+        return new DeleteResult(repository.deleteByMpaaRating(rating));
+    }
+
+    public void deleteByScreenwriter(String name) {
+        if (!repository.deleteByScreenwriter(name)) {
+            throw new ApiException(ErrorCode.NO_MATCHING_MOVIE, "Фильм с указанным сценаристом не найден");
+        }
+    }
+
+    private static ApiException movieNotFound(int id) {
+        return new ApiException(ErrorCode.MOVIE_NOT_FOUND, "Фильм с id=" + id + " не найден");
     }
 }
