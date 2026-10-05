@@ -2,8 +2,8 @@ package ru.itmo.movies.parse;
 
 import java.util.regex.Pattern;
 
-import ru.itmo.movies.exception.ApiException;
-import ru.itmo.movies.model.ErrorCode;
+import ru.itmo.movies.error.ApiException;
+import ru.itmo.movies.error.ErrorCode;
 
 public final class PathIds {
 

@@ -3,10 +3,10 @@ package ru.itmo.movies.service;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import ru.itmo.movies.exception.ApiException;
+import ru.itmo.movies.error.ApiException;
 import ru.itmo.movies.model.AverageBudget;
 import ru.itmo.movies.model.DeleteResult;
-import ru.itmo.movies.model.ErrorCode;
+import ru.itmo.movies.error.ErrorCode;
 import ru.itmo.movies.model.Movie;
 import ru.itmo.movies.model.MovieFilter;
 import ru.itmo.movies.model.MovieInput;
@@ -52,11 +52,15 @@ public class MovieService {
     }
 
     public AverageBudget getAverageBudget() {
-        return new AverageBudget(repository.averageBudget());
+        AverageBudget result = new AverageBudget();
+        result.setAverageBudget(repository.averageBudget());
+        return result;
     }
 
     public DeleteResult deleteByMpaaRating(MpaaRating rating) {
-        return new DeleteResult(repository.deleteByMpaaRating(rating));
+        DeleteResult result = new DeleteResult();
+        result.setDeletedCount(repository.deleteByMpaaRating(rating));
+        return result;
     }
 
     public void deleteByScreenwriter(String name) {

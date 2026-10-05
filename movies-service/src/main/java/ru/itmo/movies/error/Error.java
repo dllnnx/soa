@@ -1,4 +1,4 @@
-package ru.itmo.movies.model;
+package ru.itmo.movies.error;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;

@@ -5,9 +5,9 @@ import java.util.List;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
-import ru.itmo.movies.model.ErrorCode;
-import ru.itmo.movies.model.Error;
-import ru.itmo.movies.model.FieldError;
+import ru.itmo.movies.error.ErrorCode;
+import ru.itmo.movies.error.Error;
+import ru.itmo.movies.error.FieldError;
 
 public final class ErrorResponses {
 

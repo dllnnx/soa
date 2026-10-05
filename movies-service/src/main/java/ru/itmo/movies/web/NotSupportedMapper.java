@@ -5,7 +5,7 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
 
-import ru.itmo.movies.model.ErrorCode;
+import ru.itmo.movies.error.ErrorCode;
 
 @Provider
 public class NotSupportedMapper implements ExceptionMapper<NotSupportedException> {

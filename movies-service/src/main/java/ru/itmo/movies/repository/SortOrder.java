@@ -5,8 +5,8 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import ru.itmo.movies.exception.ApiException;
-import ru.itmo.movies.model.ErrorCode;
+import ru.itmo.movies.error.ApiException;
+import ru.itmo.movies.error.ErrorCode;
 
 public record SortOrder(SortKey key, boolean ascending) {
 

@@ -20,7 +20,6 @@ import ru.itmo.movies.model.Country;
 import ru.itmo.movies.model.Coordinates;
 import ru.itmo.movies.model.CoordinatesFilter;
 import ru.itmo.movies.model.EyeColor;
-import ru.itmo.movies.model.HairColor;
 import ru.itmo.movies.model.Location;
 import ru.itmo.movies.model.Movie;
 import ru.itmo.movies.model.MovieFilter;
@@ -97,8 +96,14 @@ public class MovieRepository {
             List<Movie> content = totalElements == 0
                     ? List.of()
                     : selectPage(connection, where, params, sort, page, size);
-            int totalPages = (int) Math.ceil(totalElements / (double) size);
-            return new MoviePage(page, size, totalElements, totalPages, content);
+
+            MoviePage result = new MoviePage();
+            result.setPage(page);
+            result.setSize(size);
+            result.setTotalElements(totalElements);
+            result.setTotalPages((int) Math.ceil(totalElements / (double) size));
+            result.setContent(content);
+            return result;
         });
     }
 
@@ -158,7 +163,7 @@ public class MovieRepository {
         ps.setString(first, person.getName());
         ps.setDouble(first + 1, person.getHeight());
         ps.setString(first + 2, person.getEyeColor().name());
-        ps.setString(first + 3, person.getHairColor() == null ? null : person.getHairColor().name());
+        ps.setString(first + 3, person.getHairColor() == null ? null : person.getHairColor().getValue());
         ps.setString(first + 4, person.getNationality().name());
         ps.setFloat(first + 5, person.getLocation().getX());
         ps.setInt(first + 6, person.getLocation().getY());
@@ -177,8 +182,8 @@ public class MovieRepository {
         }
         CoordinatesFilter coordinates = filter.getCoordinates();
         if (coordinates != null) {
-            range(conditions, params, "coord_x", coordinates.getXFrom(), coordinates.getXTo());
-            range(conditions, params, "coord_y", coordinates.getYFrom(), coordinates.getYTo());
+            range(conditions, params, "coord_x", coordinates.getxFrom(), coordinates.getxTo());
+            range(conditions, params, "coord_y", coordinates.getyFrom(), coordinates.getyTo());
         }
         if (filter.getCreationDateBefore() != null) {
             conditions.add("creation_date < ?");
@@ -211,11 +216,11 @@ public class MovieRepository {
             eq(conditions, params, "sw_nationality", screenwriter.getNationality());
             if (screenwriter.getLocation() != null) {
                 range(conditions, params, "sw_loc_x",
-                        screenwriter.getLocation().getXFrom(), screenwriter.getLocation().getXTo());
+                        screenwriter.getLocation().getxFrom(), screenwriter.getLocation().getxTo());
                 range(conditions, params, "sw_loc_y",
-                        screenwriter.getLocation().getYFrom(), screenwriter.getLocation().getYTo());
+                        screenwriter.getLocation().getyFrom(), screenwriter.getLocation().getyTo());
                 range(conditions, params, "sw_loc_z",
-                        screenwriter.getLocation().getZFrom(), screenwriter.getLocation().getZTo());
+                        screenwriter.getLocation().getzFrom(), screenwriter.getLocation().getzTo());
             }
         }
     }
@@ -293,7 +298,7 @@ public class MovieRepository {
         coordinates.setX(rs.getDouble("coord_x"));
         coordinates.setY(rs.getDouble("coord_y"));
         movie.setCoordinates(coordinates);
-        movie.setCreationDate(rs.getObject("creation_date", OffsetDateTime.class).toZonedDateTime());
+        movie.setCreationDate(rs.getObject("creation_date", OffsetDateTime.class));
         movie.setOscarsCount(rs.getLong("oscars_count"));
         int budget = rs.getInt("budget");
         movie.setBudget(rs.wasNull() ? null : budget);
@@ -313,7 +318,7 @@ public class MovieRepository {
         person.setHeight(rs.getDouble("sw_height"));
         person.setEyeColor(EyeColor.valueOf(rs.getString("sw_eye_color")));
         String hairColor = rs.getString("sw_hair_color");
-        person.setHairColor(hairColor == null ? null : HairColor.valueOf(hairColor));
+        person.setHairColor(hairColor == null ? null : Person.HairColorEnum.fromValue(hairColor));
         person.setNationality(Country.valueOf(rs.getString("sw_nationality")));
         Location location = new Location();
         location.setX(rs.getFloat("sw_loc_x"));

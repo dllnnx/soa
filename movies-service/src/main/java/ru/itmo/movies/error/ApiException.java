@@ -1,11 +1,8 @@
-package ru.itmo.movies.exception;
+package ru.itmo.movies.error;
 
 import java.util.List;
 
 import lombok.Getter;
-
-import ru.itmo.movies.model.ErrorCode;
-import ru.itmo.movies.model.FieldError;
 
 @Getter
 public class ApiException extends RuntimeException {

@@ -22,10 +22,10 @@ import jakarta.json.JsonReader;
 import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
 
-import ru.itmo.movies.exception.ApiException;
+import ru.itmo.movies.error.ApiException;
 import ru.itmo.movies.model.Coordinates;
 import ru.itmo.movies.model.CoordinatesFilter;
-import ru.itmo.movies.model.ErrorCode;
+import ru.itmo.movies.error.ErrorCode;
 import ru.itmo.movies.model.Location;
 import ru.itmo.movies.model.LocationFilter;
 import ru.itmo.movies.model.MovieFilter;

@@ -3,11 +3,11 @@ package ru.itmo.movies.validation;
 import java.util.ArrayList;
 import java.util.List;
 
-import ru.itmo.movies.exception.ApiException;
+import ru.itmo.movies.error.ApiException;
 import ru.itmo.movies.model.Coordinates;
 import ru.itmo.movies.model.CoordinatesFilter;
-import ru.itmo.movies.model.ErrorCode;
-import ru.itmo.movies.model.FieldError;
+import ru.itmo.movies.error.ErrorCode;
+import ru.itmo.movies.error.FieldError;
 import ru.itmo.movies.model.MovieFilter;
 import ru.itmo.movies.model.MovieInput;
 import ru.itmo.movies.model.Person;
@@ -34,10 +34,10 @@ public final class MovieValidator {
         }
         CoordinatesFilter c = filter.getCoordinates();
         if (c != null) {
-            if (c.getXFrom() != null && c.getXFrom() <= -130) {
+            if (c.getxFrom() != null && c.getxFrom() <= -130) {
                 add(errors, "coordinates.xFrom", "Значение поля должно быть больше -130");
             }
-            if (c.getYTo() != null && c.getYTo() > 388) {
+            if (c.getyTo() != null && c.getyTo() > 388) {
                 add(errors, "coordinates.yTo", "Максимальное значение поля: 388");
             }
         }
@@ -108,7 +108,9 @@ public final class MovieValidator {
 
     private static void person(List<FieldError> errors, String prefix, Person person) {
         string(errors, prefix + ".name", person.getName(), false);
-        if (person.getHeight() <= 0) {
+        if (person.getHeight() == null) {
+            add(errors, prefix + ".height", "Поле не может быть null");
+        } else if (person.getHeight() <= 0) {
             add(errors, prefix + ".height", "Значение поля должно быть больше 0");
         }
         if (person.getEyeColor() == null) {
@@ -122,6 +124,9 @@ public final class MovieValidator {
         } else {
             if (person.getLocation().getX() == null) {
                 add(errors, prefix + ".location.x", "Поле не может быть null");
+            }
+            if (person.getLocation().getY() == null) {
+                add(errors, prefix + ".location.y", "Поле не может быть null");
             }
             if (person.getLocation().getZ() == null) {
                 add(errors, prefix + ".location.z", "Поле не может быть null");

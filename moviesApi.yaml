@@ -253,7 +253,6 @@ components:
         - UNITED_KINGDOM
         - SOUTH_KOREA
         - JAPAN
-      default: JAPAN
     Coordinates:
       type: object
       description: Координаты фильма.
@@ -311,7 +310,6 @@ components:
           minLength: 1
           maxLength: 255
           pattern: '^[a-zA-Zа-яА-ЯЁё0-9 .,:!?()&-]{1,255}$'
-          default: 'Евгений Цопа'
         height:
           type: number
           format: double
@@ -490,7 +488,6 @@ components:
           minLength: 1
           maxLength: 255
           pattern: '^[a-zA-Zа-яА-ЯЁё0-9 .,:!?()&-]{1,255}$'
-          default: 'Слово пацана'
         coordinates:
           $ref: '#/components/schemas/Coordinates'
         oscarsCount:
@@ -538,7 +535,6 @@ components:
           minLength: 1
           maxLength: 255
           pattern: '^[a-zA-Zа-яА-ЯЁё0-9 .,:!?()&-]{1,255}$'
-          default: 'Груз 200'
         coordinates:
           $ref: '#/components/schemas/Coordinates'
         creationDate:

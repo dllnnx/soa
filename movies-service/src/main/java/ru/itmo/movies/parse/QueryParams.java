@@ -5,8 +5,8 @@ import java.util.Set;
 
 import jakarta.ws.rs.core.UriInfo;
 
-import ru.itmo.movies.exception.ApiException;
-import ru.itmo.movies.model.ErrorCode;
+import ru.itmo.movies.error.ApiException;
+import ru.itmo.movies.error.ErrorCode;
 import ru.itmo.movies.model.MpaaRating;
 import ru.itmo.movies.repository.SortKey;
 import ru.itmo.movies.repository.SortOrder;

@@ -1,4 +1,4 @@
-package ru.itmo.movies.model;
+package ru.itmo.movies.error;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -9,7 +9,8 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class DeleteResult {
+public class FieldError {
 
-    private long deletedCount;
+    private String field;
+    private String message;
 }

@@ -12,8 +12,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.ws.rs.core.MediaType;
 
-import ru.itmo.movies.model.ErrorCode;
-import ru.itmo.movies.model.Error;
+import ru.itmo.movies.error.ErrorCode;
+import ru.itmo.movies.error.Error;
 
 @WebFilter(urlPatterns = "/*")
 public class RequestLimitFilter implements Filter {
