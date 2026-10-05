@@ -1,0 +1,11 @@
+movies:
+  base-url: ${MOVIES_SERVICE_URL:http://movies:8080}
+  connect-timeout: ${MOVIES_CONNECT_TIMEOUT:3s}
+  read-timeout: ${MOVIES_READ_TIMEOUT:30s}
+
+spring:
+  application:
+    name: oscars-service
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
