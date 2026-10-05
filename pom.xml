@@ -11,7 +11,7 @@
 
     <modules>
         <module>movies-service</module>
-        <module>oscar-service</module>
+        <module>oscars-service</module>
     </modules>
 
     <properties>
