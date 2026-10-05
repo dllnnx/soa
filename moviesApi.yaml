@@ -496,8 +496,8 @@ components:
         oscarsCount:
           type: integer
           format: int64
-          description: Количество Оскаров, строго больше 0.
-          minimum: 1
+          description: Количество Оскаров, не меньше 0.
+          minimum: 0
         budget:
           type: integer
           format: int32
