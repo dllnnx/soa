@@ -22,6 +22,8 @@ services:
       dockerfile: deploy/payara/Dockerfile
     image: soa/movies-service
     platform: linux/amd64
+    environment:
+      JVM_ARGS: "-Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8181:8181"
       # админ-консоль Payara
@@ -37,6 +39,7 @@ services:
     image: soa/oscars-service
     environment:
       MOVIES_SERVICE_URL: https://payara:8181
+      JBOSS_JAVA_SIZING: "-Xms64m -Xmx256m -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8443:8443"
     depends_on:
@@ -46,9 +49,11 @@ services:
     build: ../frontend
     image: soa/frontend
     ports:
-      - "3000:80"
+      - "3000:443"
     volumes:
       - ./certs/out/ca.crt:/etc/nginx/certs/ca.crt:ro
+      - ./certs/out/payara.crt:/etc/nginx/certs/server.crt:ro
+      - ./certs/out/payara.key:/etc/nginx/certs/server.key:ro
     depends_on:
       - payara
       - wildfly

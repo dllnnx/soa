@@ -10,6 +10,8 @@ embed-server --server-config=standalone.xml
 /subsystem=undertow/server=default-server/https-listener=https:add(socket-binding=https,ssl-context=httpsSSC,max-post-size=1048576)
 
 # HTTP (8080) выключен — сервис только по HTTPS
-/subsystem=undertow/server=default-server/http-listener=http:remove()
+if (outcome == success) of /subsystem=undertow/server=default-server/http-listener=http:read-resource
+  /subsystem=undertow/server=default-server/http-listener=http:remove()
+end-if
 
 stop-embedded-server

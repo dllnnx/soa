@@ -1,14 +1,10 @@
 # Только HTTPS: http-listener-1 (8080) выключен,
-# http-listener-2 (8181) включён с TLS-сертификатом alias s1as из keystore.jks
-set configs.config.server-config.network-config.protocols.protocol.http-listener-1.enabled=false
-set configs.config.server-config.network-config.protocols.protocol.http-listener-2.enabled=true
+# http-listener-2 (8181) включён с TLS-сертификатом alias s1as из keystore.p12
+set configs.config.server-config.network-config.network-listeners.network-listener.http-listener-1.enabled=false
+set configs.config.server-config.network-config.network-listeners.network-listener.http-listener-2.enabled=true
 set configs.config.server-config.network-config.protocols.protocol.http-listener-2.security-enabled=true
 
-create-jdbc-connection-pool \
-  --datasourceclassname=org.postgresql.ds.PGSimpleDataSource \
-  --restype=javax.sql.DataSource \
-  --property="serverName=postgres:portNumber=5432:databaseName=movies:user=movies:password=movies" \
-  MoviesPool
+create-jdbc-connection-pool --datasourceclassname=org.postgresql.ds.PGSimpleDataSource --restype=javax.sql.DataSource --property="serverName=postgres:portNumber=5432:databaseName=movies:user=movies:password=movies" MoviesPool
 create-jdbc-resource --connectionpoolid=MoviesPool jdbc/MoviesDS
 
-deploy --contextroot=/ --name=movies /opt/payara/movies.war
+deploy --force=true --contextroot=/ --name=movies /opt/payara/movies.war

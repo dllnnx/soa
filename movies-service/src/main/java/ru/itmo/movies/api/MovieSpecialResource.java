@@ -5,6 +5,7 @@ import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
@@ -29,14 +30,14 @@ public class MovieSpecialResource {
 
     @DELETE
     @Path("by-mpaa-rating")
-    public DeleteResult deleteByMpaaRating(UriInfo uri) {
+    public DeleteResult deleteByMpaaRating(@Context UriInfo uri) {
         QueryParams.allow(uri, "mpaa-rating");
         return service.deleteByMpaaRating(QueryParams.mpaaRating(uri));
     }
 
     @DELETE
     @Path("by-screenwriter")
-    public Response deleteByScreenwriter(UriInfo uri) {
+    public Response deleteByScreenwriter(@Context UriInfo uri) {
         QueryParams.allow(uri, "name");
         service.deleteByScreenwriter(QueryParams.screenwriterName(uri));
         return Response.noContent().build();

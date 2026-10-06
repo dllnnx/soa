@@ -8,7 +8,7 @@ import {
 import type { Filters, Genre, Movie, MovieDraft, OscarJob, Person } from './types';
 import {
   COUNTRIES, EYE_COLORS, emptyDraft, emptyFilters, formatDate, formatMoney, GENRES,
-  genreLabels, HAIR_COLORS, initialMovies, MPAA, countryLabels, colorLabels, draftFromMovie,
+  genreLabels, HAIR_COLORS, MPAA, countryLabels, colorLabels, draftFromMovie,
 } from './mock';
 
 type Toast = { kind: 'success' | 'error' | 'info'; title: string; message: string } | null;
@@ -22,58 +22,58 @@ const sortOptions = [
   ['screenwriter-location-x', 'Локация сценариста X'], ['screenwriter-location-y', 'Локация сценариста Y'], ['screenwriter-location-z', 'Локация сценариста Z'],
 ] as const;
 
-const fieldValue = (item: Movie, field: string): string | number => {
-  const values: Record<string, string | number | null | undefined> = {
-    id: item.id,
-    name: item.name,
-    'coordinates-x': item.coordinates.x,
-    'coordinates-y': item.coordinates.y,
-    'creation-date': item.creationDate,
-    'oscars-count': item.oscarsCount,
-    budget: item.budget,
-    genre: item.genre,
-    'mpaa-rating': item.mpaaRating,
-    'screenwriter-name': item.screenwriter?.name,
-    'screenwriter-height': item.screenwriter?.height,
-    'screenwriter-eye-color': item.screenwriter?.eyeColor,
-    'screenwriter-hair-color': item.screenwriter?.hairColor,
-    'screenwriter-nationality': item.screenwriter?.nationality,
-    'screenwriter-location-x': item.screenwriter?.location.x,
-    'screenwriter-location-y': item.screenwriter?.location.y,
-    'screenwriter-location-z': item.screenwriter?.location.z,
-  };
-  return values[field] ?? '';
+type MoviePage = { page: number; size: number; totalElements: number; totalPages: number; content: Movie[] };
+type JobResponse = { jobId: string; status: OscarJob['status']; result?: { updatedCount?: number; errorMessage?: string } };
+type ApiErrorBody = { message?: string; details?: Array<{ field: string; message: string }> };
+
+const api = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
+  const response = await fetch(path, {
+    ...init,
+    headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
+  });
+  const text = await response.text();
+  const body = text ? JSON.parse(text) as T | ApiErrorBody : undefined;
+  if (!response.ok) {
+    const error = (body ?? {}) as ApiErrorBody;
+    const details = error.details?.map((item) => `${item.field}: ${item.message}`).join('; ');
+    throw new Error([error.message || `HTTP ${response.status}`, details].filter(Boolean).join(' — '));
+  }
+  return body as T;
 };
 
-const numberMatches = (value: number | null | undefined, from: string, to: string) => {
-  if (value == null && (from || to)) return false;
-  if (from && Number(value) <= Number(from)) return false;
-  if (to && Number(value) >= Number(to)) return false;
-  return true;
-};
+const present = (value: string) => value === '' ? undefined : Number(value);
+const compactObject = (value: Record<string, unknown>) => Object.fromEntries(
+  Object.entries(value).filter(([, item]) => item !== undefined && item !== '' && (!Array.isArray(item) || item.length > 0)),
+);
 
-const matchesFilters = (item: Movie, filters: Filters) => {
-  const ids = filters.ids.split(',').map((id) => Number(id.trim())).filter(Boolean);
-  if (ids.length && !ids.includes(item.id)) return false;
-  if (filters.name && !item.name.toLocaleLowerCase('ru').includes(filters.name.toLocaleLowerCase('ru'))) return false;
-  if (filters.genres.length && !filters.genres.includes(item.genre)) return false;
-  if (filters.mpaaRating && item.mpaaRating !== filters.mpaaRating) return false;
-  if (!numberMatches(item.coordinates.x, filters.coordinateXFrom, filters.coordinateXTo)) return false;
-  if (!numberMatches(item.coordinates.y, filters.coordinateYFrom, filters.coordinateYTo)) return false;
-  if (!numberMatches(item.oscarsCount, filters.oscarsFrom, filters.oscarsTo)) return false;
-  if (!numberMatches(item.budget, filters.budgetFrom, filters.budgetTo)) return false;
-  if (filters.creationAfter && new Date(item.creationDate) <= new Date(filters.creationAfter)) return false;
-  if (filters.creationBefore && new Date(item.creationDate) >= new Date(filters.creationBefore)) return false;
-  const writer = item.screenwriter;
-  if (filters.screenwriterName && !writer?.name.toLocaleLowerCase('ru').includes(filters.screenwriterName.toLocaleLowerCase('ru'))) return false;
-  if (!numberMatches(writer?.height, filters.heightFrom, filters.heightTo)) return false;
-  if (filters.eyeColor && writer?.eyeColor !== filters.eyeColor) return false;
-  if (filters.hairColor && writer?.hairColor !== filters.hairColor) return false;
-  if (filters.nationality && writer?.nationality !== filters.nationality) return false;
-  if (!numberMatches(writer?.location.x, filters.locationXFrom, filters.locationXTo)) return false;
-  if (!numberMatches(writer?.location.y, filters.locationYFrom, filters.locationYTo)) return false;
-  if (!numberMatches(writer?.location.z, filters.locationZFrom, filters.locationZTo)) return false;
-  return true;
+const toMovieFilter = (filters: Filters) => {
+  const coordinates = compactObject({
+    xFrom: present(filters.coordinateXFrom), xTo: present(filters.coordinateXTo),
+    yFrom: present(filters.coordinateYFrom), yTo: present(filters.coordinateYTo),
+  });
+  const location = compactObject({
+    xFrom: present(filters.locationXFrom), xTo: present(filters.locationXTo),
+    yFrom: present(filters.locationYFrom), yTo: present(filters.locationYTo),
+    zFrom: present(filters.locationZFrom), zTo: present(filters.locationZTo),
+  });
+  const screenwriter = compactObject({
+    name: filters.screenwriterName || undefined,
+    heightFrom: present(filters.heightFrom), heightTo: present(filters.heightTo),
+    eyeColor: filters.eyeColor || undefined, hairColor: filters.hairColor || undefined,
+    nationality: filters.nationality || undefined,
+    location: Object.keys(location).length ? location : undefined,
+  });
+  return compactObject({
+    ids: filters.ids.split(',').map((id) => Number(id.trim())).filter((id) => Number.isInteger(id) && id > 0),
+    name: filters.name || undefined,
+    coordinates: Object.keys(coordinates).length ? coordinates : undefined,
+    creationDateAfter: filters.creationAfter ? new Date(filters.creationAfter).toISOString() : undefined,
+    creationDateBefore: filters.creationBefore ? new Date(filters.creationBefore).toISOString() : undefined,
+    oscarsCountFrom: present(filters.oscarsFrom), oscarsCountTo: present(filters.oscarsTo),
+    budgetFrom: present(filters.budgetFrom), budgetTo: present(filters.budgetTo),
+    genres: filters.genres, mpaaRating: filters.mpaaRating || undefined,
+    screenwriter: Object.keys(screenwriter).length ? screenwriter : undefined,
+  });
 };
 
 const activeFilterCount = (filters: Filters) => Object.values(filters).filter((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)).length;
@@ -81,17 +81,19 @@ const statusText = { PENDING: 'В очереди', RUNNING: 'Выполняет�
 
 function App() {
   const [activeTab, setActiveTab] = useState<'movies' | 'operations'>('movies');
-  const [movies, setMovies] = useState<Movie[]>(initialMovies);
-  const [jobs, setJobs] = useState<OscarJob[]>([
-    { id: '0199b1f4-73c2-7d65-9ed1-6b6942d5b243', type: 'REWARD_R', label: 'Наградить фильмы категории R', status: 'COMPLETED', createdAt: '2026-10-05T09:42:00Z', updatedCount: 4 },
-    { id: '0199b1da-20c7-79d0-997b-39295891ade1', type: 'RESET_BY_GENRE', label: 'Отобрать Оскары у фильмов · Приключения', status: 'FAILED', createdAt: '2026-10-05T08:16:00Z', errorMessage: 'Сервис фильмов временно недоступен' },
-  ]);
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [jobs, setJobs] = useState<OscarJob[]>([]);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [draftFilters, setDraftFilters] = useState<Filters>(emptyFilters);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(5);
   const [sortField, setSortField] = useState('id');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [totalElements, setTotalElements] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(0);
+  const [averageBudget, setAverageBudget] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [apiOnline, setApiOnline] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [movieModal, setMovieModal] = useState<{ mode: 'create' | 'edit'; movie?: Movie } | null>(null);
@@ -100,28 +102,10 @@ function App() {
   const [toast, setToast] = useState<Toast>(null);
   const [resetGenre, setResetGenre] = useState<Genre>('SCIENCE_FICTION');
 
-  const filteredMovies = useMemo(() => movies.filter((item) => matchesFilters(item, filters)).sort((a, b) => {
-    const aValue = fieldValue(a, sortField);
-    const bValue = fieldValue(b, sortField);
-    const order = typeof aValue === 'number' && typeof bValue === 'number'
-      ? aValue - bValue
-      : String(aValue).localeCompare(String(bValue), 'ru', { numeric: true });
-    return sortDirection === 'asc' ? order : -order;
-  }), [movies, filters, sortField, sortDirection]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredMovies.length / size));
-  const visibleMovies = filteredMovies.slice(page * size, page * size + size);
-  const averageBudget = useMemo(() => {
-    const values = movies.flatMap((item) => item.budget == null ? [] : [item.budget]);
-    return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
-  }, [movies]);
+  const totalPages = Math.max(1, serverTotalPages);
   const totalOscars = movies.reduce((sum, item) => sum + item.oscarsCount, 0);
   const currentJob = jobs.find((job) => job.status === 'PENDING' || job.status === 'RUNNING');
   const writers = useMemo(() => Array.from(new Map(movies.flatMap((item) => item.screenwriter ? [[item.screenwriter.name, item.screenwriter] as const] : [])).values()), [movies]);
-
-  useEffect(() => {
-    if (page >= totalPages) setPage(totalPages - 1);
-  }, [page, totalPages]);
 
   useEffect(() => {
     if (!toast) return;
@@ -129,31 +113,88 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const runOscarJob = (type: OscarJob['type'], genre?: Genre) => {
-    const id = crypto.randomUUID();
-    const label = type === 'REWARD_R' ? 'Наградить фильмы категории R' : `Отобрать Оскары у фильмов · ${genreLabels[genre!]}`;
-    const job: OscarJob = { id, type, label, status: 'PENDING', createdAt: new Date().toISOString() };
-    setJobs((items) => [job, ...items]);
-    setToast({ kind: 'info', title: 'Операция принята', message: `Джоба ${id.slice(0, 8)} добавлена в очередь` });
-    window.setTimeout(() => setJobs((items) => items.map((item) => item.id === id ? { ...item, status: 'RUNNING' } : item)), 650);
-    window.setTimeout(() => {
-      let updatedCount = 0;
-      if (type === 'REWARD_R') {
-        updatedCount = movies.filter((item) => item.mpaaRating === 'R').length;
-        setMovies((items) => items.map((item) => item.mpaaRating === 'R' ? { ...item, oscarsCount: item.oscarsCount + 1 } : item));
-      } else {
-        const names = new Set(movies.filter((item) => item.genre === genre && item.screenwriter).map((item) => item.screenwriter!.name));
-        updatedCount = movies.filter((item) => item.screenwriter && names.has(item.screenwriter.name) && item.oscarsCount > 0).length;
-        setMovies((items) => items.map((item) => item.screenwriter && names.has(item.screenwriter.name) && item.oscarsCount > 0 ? { ...item, oscarsCount: 0 } : item));
-      }
-      window.setTimeout(() => {
-        setJobs((items) => items.map((item) => item.id === id ? { ...item, status: 'COMPLETED', updatedCount } : item));
-        setToast({ kind: 'success', title: 'Операция завершена', message: `Обновлено фильмов: ${updatedCount}` });
-      }, 50);
-    }, 2100);
+  const showError = (title: string, error: unknown) => {
+    setToast({ kind: 'error', title, message: error instanceof Error ? error.message : 'Неизвестная ошибка' });
   };
 
-  const saveMovie = (draft: MovieDraft, editing?: Movie) => {
+  const loadAverage = async () => {
+    try {
+      const result = await api<{ averageBudget: number }>('/movies/average-budget');
+      setAverageBudget(result.averageBudget);
+    } catch (error) {
+      showError('Не удалось получить средний бюджет', error);
+    }
+  };
+
+  const loadMovies = async () => {
+    setLoading(true);
+    try {
+      const query = new URLSearchParams({ page: String(page), size: String(size), sort: `${sortField},${sortDirection}` });
+      const result = await api<MoviePage>(`/movies/filter?${query}`, { method: 'POST', body: JSON.stringify(toMovieFilter(filters)) });
+      setMovies(result.content);
+      setTotalElements(result.totalElements);
+      setServerTotalPages(result.totalPages);
+      setApiOnline(true);
+      if (result.totalPages > 0 && page >= result.totalPages) setPage(result.totalPages - 1);
+    } catch (error) {
+      setApiOnline(false);
+      showError('Не удалось загрузить фильмы', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadMovies(); }, 250);
+    return () => window.clearTimeout(timer);
+  }, [filters, page, size, sortField, sortDirection]);
+
+  useEffect(() => { void loadAverage(); }, []);
+
+  const updateJob = (id: string, response: JobResponse) => {
+    setJobs((items) => items.map((item) => item.id === id ? {
+      ...item,
+      status: response.status,
+      updatedCount: response.result?.updatedCount,
+      errorMessage: response.result?.errorMessage,
+    } : item));
+  };
+
+  const pollJob = async (job: OscarJob) => {
+    try {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        if (attempt) await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        const response = await api<JobResponse>(`/oscar/jobs/${job.id}/status`);
+        updateJob(job.id, response);
+        if (response.status === 'COMPLETED' || response.status === 'FAILED') {
+          setToast(response.status === 'COMPLETED'
+            ? { kind: 'success', title: 'Операция завершена', message: `Обновлено фильмов: ${response.result?.updatedCount ?? 0}` }
+            : { kind: 'error', title: 'Операция завершилась ошибкой', message: response.result?.errorMessage ?? 'Нет деталей ошибки' });
+          await Promise.all([loadMovies(), loadAverage()]);
+          return;
+        }
+      }
+      throw new Error('Истекло время ожидания результата операции');
+    } catch (error) {
+      showError('Не удалось проверить джобу', error);
+    }
+  };
+
+  const runOscarJob = async (type: OscarJob['type'], genre?: Genre) => {
+    const label = type === 'REWARD_R' ? 'Наградить фильмы категории R' : `Отобрать Оскары у фильмов · ${genreLabels[genre!]}`;
+    try {
+      const path = type === 'REWARD_R' ? '/oscar/movies/reward-r' : `/oscar/movies/reset-oscars-by-genre/${genre}`;
+      const accepted = await api<{ jobId: string; statusUrl: string }>(path, { method: 'POST' });
+      const job: OscarJob = { id: accepted.jobId, type, label, status: 'PENDING', createdAt: new Date().toISOString() };
+      setJobs((items) => [job, ...items]);
+      setToast({ kind: 'info', title: 'Операция принята', message: `Джоба ${job.id.slice(0, 8)} добавлена в очередь` });
+      void pollJob(job);
+    } catch (error) {
+      showError('Не удалось запустить операцию', error);
+    }
+  };
+
+  const saveMovie = async (draft: MovieDraft, editing?: Movie) => {
     let screenwriter: Person | null = null;
     if (draft.screenwriterMode === 'existing') screenwriter = writers.find((item) => item.name === draft.existingScreenwriter) ?? null;
     if (draft.screenwriterMode === 'new') {
@@ -163,22 +204,70 @@ function App() {
         location: { x: Number(draft.locationX), y: Number(draft.locationY), z: Number(draft.locationZ) },
       };
     }
-    const item: Movie = {
-      id: editing?.id ?? Math.max(...movies.map((movie) => movie.id), 0) + 1,
-      name: draft.name.trim(), coordinates: { x: Number(draft.coordinateX), y: Number(draft.coordinateY) },
-      creationDate: editing?.creationDate ?? new Date().toISOString(), oscarsCount: Number(draft.oscarsCount),
+    const input = {
+      name: draft.name.trim(),
+      coordinates: { x: Number(draft.coordinateX), y: Number(draft.coordinateY) },
+      oscarsCount: Number(draft.oscarsCount),
       budget: draft.budget ? Number(draft.budget) : null, genre: draft.genre, mpaaRating: draft.mpaaRating, screenwriter,
     };
-    setMovies((items) => editing ? items.map((movie) => movie.id === editing.id ? item : movie) : [item, ...items]);
-    setMovieModal(null);
-    setToast({ kind: 'success', title: editing ? 'Фильм обновлён' : 'Фильм создан', message: `${item.name} · ID ${item.id}` });
+    try {
+      const item = await api<Movie>(editing ? `/movies/${editing.id}` : '/movies', {
+        method: editing ? 'PUT' : 'POST', body: JSON.stringify(input),
+      });
+      setMovieModal(null);
+      setToast({ kind: 'success', title: editing ? 'Фильм обновлён' : 'Фильм создан', message: `${item.name} · ID ${item.id}` });
+      await Promise.all([loadMovies(), loadAverage()]);
+    } catch (error) {
+      showError(editing ? 'Не удалось обновить фильм' : 'Не удалось создать фильм', error);
+    }
   };
 
-  const removeMovie = (item: Movie) => {
-    setMovies((items) => items.filter((movie) => movie.id !== item.id));
-    setConfirmDelete(null);
-    setExpandedId(null);
-    setToast({ kind: 'success', title: 'Фильм удалён', message: `${item.name} больше не в коллекции` });
+  const removeMovie = async (item: Movie) => {
+    try {
+      await api<void>(`/movies/${item.id}`, { method: 'DELETE' });
+      setConfirmDelete(null);
+      setExpandedId(null);
+      setToast({ kind: 'success', title: 'Фильм удалён', message: `${item.name} больше не в коллекции` });
+      await Promise.all([loadMovies(), loadAverage()]);
+    } catch (error) {
+      showError('Не удалось удалить фильм', error);
+    }
+  };
+
+  const deleteByMpaa = async (rating: string) => {
+    try {
+      const result = await api<{ deletedCount: number }>(`/movies/by-mpaa-rating?mpaa-rating=${encodeURIComponent(rating)}`, { method: 'DELETE' });
+      setToast({ kind: 'success', title: 'Массовое удаление завершено', message: `Удалено фильмов: ${result.deletedCount}` });
+      await Promise.all([loadMovies(), loadAverage()]);
+    } catch (error) {
+      showError('Не удалось удалить фильмы', error);
+    }
+  };
+
+  const deleteByWriter = async (name: string) => {
+    try {
+      await api<void>(`/movies/by-screenwriter?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+      setToast({ kind: 'success', title: 'Фильм удалён', message: `Сценарист: ${name}` });
+      await Promise.all([loadMovies(), loadAverage()]);
+    } catch (error) {
+      showError('Не удалось удалить фильм', error);
+    }
+  };
+
+  const inspectJob = async (id: string) => {
+    try {
+      const response = await api<JobResponse>(`/oscar/jobs/${id}/status`);
+      const known = jobs.find((item) => item.id === id);
+      if (known) updateJob(id, response);
+      else setJobs((items) => [{ id, type: 'REWARD_R', label: 'Проверенная джоба', status: response.status, createdAt: new Date().toISOString(), updatedCount: response.result?.updatedCount, errorMessage: response.result?.errorMessage }, ...items]);
+      setToast({
+        kind: response.status === 'FAILED' ? 'error' : 'success',
+        title: statusText[response.status],
+        message: response.result?.errorMessage ?? `Обновлено фильмов: ${response.result?.updatedCount ?? 0}`,
+      });
+    } catch (error) {
+      showError('Не удалось получить статус джобы', error);
+    }
   };
 
   const applyQuickSearch = (value: string) => {
@@ -201,7 +290,7 @@ function App() {
             {currentJob && <span className="nav-pulse" />}
           </button>
         </nav>
-        <div className="service-state"><span /> API · заглушки</div>
+        <div className={`service-state ${apiOnline ? '' : 'offline'}`}><span /> API · {apiOnline ? 'подключено' : 'недоступно'}</div>
       </header>
 
       <main>
@@ -218,9 +307,9 @@ function App() {
             </section>
 
             <section className="metrics-grid">
-              <Metric icon={<Film />} label="Фильмов в коллекции" value={String(movies.length)} note={`${filteredMovies.length} в выборке`} tone="ink" />
-              <Metric icon={<CircleDollarSign />} label="Средний бюджет" value={compactMoney(averageBudget)} note="без фильмов без бюджета" tone="green" />
-              <Metric icon={<Award />} label="Всего Оскаров" value={String(totalOscars)} note={`${movies.filter((item) => item.oscarsCount > 0).length} награждённых`} tone="gold" />
+              <Metric icon={<Film />} label="Фильмов в выборке" value={String(totalElements)} note={`${movies.length} на текущей странице`} tone="ink" loading={loading} />
+              <Metric icon={<CircleDollarSign />} label="Средний бюджет" value={compactMoney(averageBudget)} note="по всей коллекции" tone="green" loading={loading} />
+              <Metric icon={<Award />} label="Оскаров на странице" value={String(totalOscars)} note={`${movies.filter((item) => item.oscarsCount > 0).length} награждённых`} tone="gold" loading={loading} />
             </section>
 
             <section className="table-card">
@@ -261,33 +350,24 @@ function App() {
                     <th aria-label="Действия" />
                   </tr></thead>
                   <tbody>
-                    {visibleMovies.map((item) => (
+                    {movies.map((item) => (
                       <MovieRows key={item.id} item={item} expanded={expandedId === item.id} onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)} onEdit={() => setMovieModal({ mode: 'edit', movie: item })} onDelete={() => setConfirmDelete(item)} />
                     ))}
                   </tbody>
                 </table>
-                {!visibleMovies.length && <EmptyState onReset={() => { setFilters(emptyFilters); setDraftFilters(emptyFilters); }} />}
+                {!movies.length && !loading && <EmptyState onReset={() => { setFilters(emptyFilters); setDraftFilters(emptyFilters); }} />}
               </div>
-              <Pagination page={page} size={size} total={filteredMovies.length} totalPages={totalPages} onPage={setPage} onSize={(value) => { setSize(value); setPage(0); }} />
+              <Pagination page={page} size={size} total={totalElements} totalPages={totalPages} onPage={setPage} onSize={(value) => { setSize(value); setPage(0); }} />
             </section>
           </>
         ) : (
-          <OperationsPage jobs={jobs} currentJob={currentJob} resetGenre={resetGenre} setResetGenre={setResetGenre} runJob={runOscarJob} onToast={setToast} />
+          <OperationsPage jobs={jobs} currentJob={currentJob} resetGenre={resetGenre} setResetGenre={setResetGenre} runJob={runOscarJob} inspectJob={inspectJob} onToast={setToast} />
         )}
       </main>
 
       {filtersOpen && <FiltersDrawer value={draftFilters} onChange={setDraftFilters} onClose={() => setFiltersOpen(false)} onApply={() => { setFilters(draftFilters); setPage(0); setFiltersOpen(false); }} onReset={() => setDraftFilters(emptyFilters)} />}
       {movieModal && <MovieModal mode={movieModal.mode} movie={movieModal.movie} writers={writers} onClose={() => setMovieModal(null)} onSave={saveMovie} />}
-      {toolsOpen && <ToolsModal movies={movies} writers={writers} averageBudget={averageBudget} onClose={() => setToolsOpen(false)} onDeleteMpaa={(rating) => {
-        const count = movies.filter((item) => item.mpaaRating === rating).length;
-        setMovies((items) => items.filter((item) => item.mpaaRating !== rating));
-        setToast({ kind: 'success', title: 'Массовое удаление завершено', message: `Удалено фильмов: ${count}` });
-      }} onDeleteWriter={(name) => {
-        const target = movies.find((item) => item.screenwriter?.name === name);
-        if (!target) return setToast({ kind: 'error', title: 'Фильм не найден', message: `Нет фильмов со сценаристом «${name}»` });
-        setMovies((items) => items.filter((item) => item.id !== target.id));
-        setToast({ kind: 'success', title: 'Фильм удалён', message: `${target.name} · сценарист ${name}` });
-      }} />}
+      {toolsOpen && <ToolsModal movies={movies} writers={writers} averageBudget={averageBudget} onClose={() => setToolsOpen(false)} onDeleteMpaa={(rating) => { void deleteByMpaa(rating); }} onDeleteWriter={(name) => { void deleteByWriter(name); }} />}
       {confirmDelete && <ConfirmModal title="Удалить фильм?" text={`«${confirmDelete.name}» будет удалён из коллекции. Отменить это действие не получится.`} confirm="Удалить" onCancel={() => setConfirmDelete(null)} onConfirm={() => removeMovie(confirmDelete)} />}
       {toast && <div className={`toast ${toast.kind}`} role="status"><span>{toast.kind === 'success' ? <Check /> : toast.kind === 'error' ? <AlertCircle /> : <Clock3 />}</span><div><b>{toast.title}</b><p>{toast.message}</p></div><button onClick={() => setToast(null)}><X size={16} /></button></div>}
     </div>
@@ -334,14 +414,12 @@ function EmptyState({ onReset }: { onReset: () => void }) {
   return <div className="empty-state"><span><Film size={25} /></span><b>Ничего не найдено</b><p>Попробуйте изменить условия фильтрации.</p><button className="button secondary" onClick={onReset}><RotateCcw size={16} /> Сбросить фильтры</button></div>;
 }
 
-function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, runJob, onToast }: { jobs: OscarJob[]; currentJob?: OscarJob; resetGenre: Genre; setResetGenre: (genre: Genre) => void; runJob: (type: OscarJob['type'], genre?: Genre) => void; onToast: (toast: Toast) => void }) {
+function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, runJob, inspectJob, onToast }: { jobs: OscarJob[]; currentJob?: OscarJob; resetGenre: Genre; setResetGenre: (genre: Genre) => void; runJob: (type: OscarJob['type'], genre?: Genre) => void; inspectJob: (id: string) => void; onToast: (toast: Toast) => void }) {
   const [lookup, setLookup] = useState('');
   const inspect = () => {
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuid.test(lookup)) return onToast({ kind: 'error', title: 'Невалидный идентификатор', message: 'Введите UUID джобы в формате xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' });
-    const job = jobs.find((item) => item.id === lookup);
-    if (!job) return onToast({ kind: 'error', title: 'Джоба не найдена', message: `JOB_NOT_FOUND · ${lookup.slice(0, 8)}…` });
-    onToast({ kind: job.status === 'FAILED' ? 'error' : 'success', title: statusText[job.status], message: job.errorMessage ?? `Обновлено фильмов: ${job.updatedCount ?? 0}` });
+    inspectJob(lookup);
   };
   return <>
     <section className="page-heading operations-heading"><div><h1>Статус операций</h1></div><div className="heading-actions operations-actions"><TooltipButton className="button secondary" label="Наградить фильмы категории R" tooltip="Увеличить количество Оскаров на 1 у всех фильмов категории R" onClick={() => runJob('REWARD_R')} disabled={Boolean(currentJob)} /><div className="compound-action light"><select aria-label="Жанр для отбора Оскаров" value={resetGenre} onChange={(event) => setResetGenre(event.target.value as Genre)}>{GENRES.map((genre) => <option key={genre} value={genre}>{genreLabels[genre]}</option>)}</select><TooltipButton label="Отобрать Оскары у фильмов" tooltip="Обнулить количество Оскаров у всех фильмов, режиссёр которых снял хотя бы один фильм в выбранном жанре" onClick={() => runJob('RESET_BY_GENRE', resetGenre)} disabled={Boolean(currentJob)} /></div></div></section>
@@ -408,7 +486,7 @@ function MovieModal({ mode, movie, writers, onClose, onSave }: { mode: 'create' 
     else if (!/^[a-zA-Zа-яА-ЯЁё0-9 .,:!?()&-]+$/.test(draft.name.trim())) next.name = 'Есть недопустимые символы';
     if (draft.coordinateX === '' || Number(draft.coordinateX) <= -130) next.coordinateX = 'Значение должно быть больше −130';
     if (draft.coordinateY === '' || Number(draft.coordinateY) > 388) next.coordinateY = 'Значение должно быть не больше 388';
-    if (!draft.oscarsCount || Number(draft.oscarsCount) < 1) next.oscarsCount = 'Минимум 1 Оскар для нового/обновляемого фильма';
+    if (draft.oscarsCount === '' || !Number.isInteger(Number(draft.oscarsCount)) || Number(draft.oscarsCount) < 0) next.oscarsCount = 'Укажите целое число не меньше 0';
     if (draft.budget && Number(draft.budget) < 1) next.budget = 'Бюджет должен быть больше 0';
     if (draft.screenwriterMode === 'existing' && !draft.existingScreenwriter) next.existingScreenwriter = 'Выберите сценариста';
     if (draft.screenwriterMode === 'new') {
@@ -428,7 +506,7 @@ function MovieModal({ mode, movie, writers, onClose, onSave }: { mode: 'create' 
         <Field label="Название *" wide error={errors.name}><input autoFocus value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="Например, Интерстеллар" /></Field>
         <Field label="Жанр *"><select value={draft.genre} onChange={(e) => set('genre', e.target.value as MovieDraft['genre'])}>{GENRES.map((item) => <option key={item} value={item}>{genreLabels[item]}</option>)}</select></Field>
         <Field label="Рейтинг MPAA *"><select value={draft.mpaaRating} onChange={(e) => set('mpaaRating', e.target.value as MovieDraft['mpaaRating'])}>{MPAA.map((item) => <option key={item} value={item}>{item.replace('_', '-')}</option>)}</select></Field>
-        <Field label="Оскары *" error={errors.oscarsCount}><input type="number" min="1" value={draft.oscarsCount} onChange={(e) => set('oscarsCount', e.target.value)} /></Field>
+        <Field label="Оскары *" error={errors.oscarsCount}><input type="number" min="0" value={draft.oscarsCount} onChange={(e) => set('oscarsCount', e.target.value)} /></Field>
         <Field label="Бюджет, $" hint="Можно оставить пустым" error={errors.budget}><input type="number" min="1" value={draft.budget} onChange={(e) => set('budget', e.target.value)} placeholder="165000000" /></Field>
         <Field label="Координата X *" error={errors.coordinateX}><input type="number" step="any" value={draft.coordinateX} onChange={(e) => set('coordinateX', e.target.value)} placeholder="> −130" /></Field>
         <Field label="Координата Y *" error={errors.coordinateY}><input type="number" step="any" value={draft.coordinateY} onChange={(e) => set('coordinateY', e.target.value)} placeholder="≤ 388" /></Field>

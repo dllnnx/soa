@@ -19,11 +19,11 @@ public final class MovieValidator {
     }
 
     public static void validateForCreate(MovieInput movie) {
-        fail(collect(movie, true));
+        fail(collect(movie));
     }
 
     public static void validateForUpdate(MovieInput movie) {
-        fail(collect(movie, false));
+        fail(collect(movie));
     }
 
     public static void validateFilter(MovieFilter filter) {
@@ -65,7 +65,7 @@ public final class MovieValidator {
         }
     }
 
-    private static List<FieldError> collect(MovieInput movie, boolean create) {
+    private static List<FieldError> collect(MovieInput movie) {
         List<FieldError> errors = new ArrayList<>();
         string(errors, "name", movie.getName(), false);
 
@@ -87,8 +87,8 @@ public final class MovieValidator {
 
         if (movie.getOscarsCount() == null) {
             add(errors, "oscarsCount", "Поле не может быть null");
-        } else if (movie.getOscarsCount() < (create ? 1 : 0)) {
-            add(errors, "oscarsCount", create ? "Значение поля должно быть больше 0" : "Значение поля должно быть не меньше 0");
+        } else if (movie.getOscarsCount() < 0) {
+            add(errors, "oscarsCount", "Значение поля должно быть не меньше 0");
         }
 
         if (movie.getBudget() != null && movie.getBudget() < 1) {

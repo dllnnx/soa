@@ -6,6 +6,7 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 
 import ru.itmo.movies.model.MovieFilter;
@@ -23,7 +24,7 @@ public class MovieFilterResource {
     private MovieService service;
 
     @POST
-    public MoviePage filter(String body, UriInfo uri) {
+    public MoviePage filter(String body, @Context UriInfo uri) {
         QueryParams.allow(uri, "page", "size", "sort");
         return service.filter(
                 BodyParser.parse(body, MovieFilter.class),

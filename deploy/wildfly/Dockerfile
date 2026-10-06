@@ -12,10 +12,13 @@ COPY deploy/certs/out/ca.crt /tmp/ca.crt
 COPY deploy/wildfly/configure.cli /tmp/configure.cli
 
 RUN /opt/jboss/wildfly/bin/jboss-cli.sh --file=/tmp/configure.cli \
- && keytool -importcert -noprompt -alias soa-lab-ca -file /tmp/ca.crt \
-      -keystore "$JAVA_HOME/lib/security/cacerts" -storepass changeit \
- && rm -rf /opt/jboss/wildfly/standalone/configuration/standalone_xml_history \
-           /tmp/configure.cli /tmp/ca.crt
+ && rm -rf /opt/jboss/wildfly/standalone/configuration/standalone_xml_history
+
+USER root
+RUN keytool -importcert -noprompt -alias soa-lab-ca -file /tmp/ca.crt \
+      -cacerts -storepass changeit \
+ && rm -f /tmp/ca.crt /tmp/configure.cli
+USER jboss
 
 COPY --from=build /build/oscars-service/target/oscar.war \
      /opt/jboss/wildfly/standalone/deployments/
