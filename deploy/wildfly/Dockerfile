@@ -7,7 +7,7 @@ RUN mvn -f oscars-service/pom.xml -DskipTests package
 
 FROM quay.io/wildfly/wildfly:32.0.1.Final-jdk17
 
-COPY deploy/certs/out/wildfly.p12 /opt/jboss/wildfly/standalone/configuration/wildfly.p12
+COPY --chown=jboss:root deploy/certs/out/wildfly.p12 /opt/jboss/wildfly/standalone/configuration/wildfly.p12
 COPY deploy/certs/out/ca.crt /tmp/ca.crt
 COPY deploy/wildfly/configure.cli /tmp/configure.cli
 
