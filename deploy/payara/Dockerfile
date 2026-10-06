@@ -4,7 +4,7 @@ COPY pom.xml moviesApi.yaml ./
 COPY movies-service/pom.xml movies-service/pom.xml
 COPY movies-service/src movies-service/src
 RUN mvn -f movies-service/pom.xml -DskipTests package \
- && mvn -q dependency:get -Dartifact=org.postgresql:postgresql:42.7.4 -Dtransitive=false
+ && mvn -f movies-service/pom.xml -q dependency:get -Dartifact=org.postgresql:postgresql:42.7.4 -Dtransitive=false
 
 FROM payara/server-full:6.2024.12
 
