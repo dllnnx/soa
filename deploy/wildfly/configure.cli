@@ -1,4 +1,4 @@
-embed-server --standalone-server --server-config=standalone.xml
+embed-server --server-config=standalone.xml
 
 /subsystem=elytron/key-store=httpsKS:add(path=${jboss.home.dir}/standalone/configuration/wildfly.p12,credential-reference={clear-text=changeit},type=PKCS12)
 /subsystem=elytron/key-manager=httpsKM:add(key-store=httpsKS,credential-reference={clear-text=changeit})
