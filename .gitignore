@@ -40,3 +40,4 @@ build/
 .DS_Store
 
 summary.txt
+deploy/certs/out/

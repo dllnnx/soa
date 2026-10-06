@@ -1,3 +1,9 @@
+# Только HTTPS: http-listener-1 (8080) выключен,
+# http-listener-2 (8181) включён с TLS-сертификатом alias s1as из keystore.jks
+set configs.config.server-config.network-config.protocols.protocol.http-listener-1.enabled=false
+set configs.config.server-config.network-config.protocols.protocol.http-listener-2.enabled=true
+set configs.config.server-config.network-config.protocols.protocol.http-listener-2.security-enabled=true
+
 create-jdbc-connection-pool \
   --datasourceclassname=org.postgresql.ds.PGSimpleDataSource \
   --restype=javax.sql.DataSource \
@@ -5,5 +11,4 @@ create-jdbc-connection-pool \
   MoviesPool
 create-jdbc-resource --connectionpoolid=MoviesPool jdbc/MoviesDS
 
-# Пул готов — теперь деплой (HTTP 8080 — дефолтный http-listener-1)
 deploy --contextroot=/ --name=movies /opt/payara/movies.war
