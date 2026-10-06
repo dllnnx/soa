@@ -3,8 +3,13 @@ embed-server --server-config=standalone.xml
 /subsystem=elytron/key-store=httpsKS:add(path=${jboss.home.dir}/standalone/configuration/wildfly.p12,credential-reference={clear-text=changeit},type=PKCS12)
 /subsystem=elytron/key-manager=httpsKM:add(key-store=httpsKS,credential-reference={clear-text=changeit})
 /subsystem=elytron/server-ssl-context=httpsSSC:add(key-manager=httpsKM,protocols=["TLSv1.2","TLSv1.3"])
+
+# Дефолтный https-listener (со старым self-signed сертификатом ApplicationRealm)
+# пересоздаём: наш ssl-context + лимит тела 1 МБ
+/subsystem=undertow/server=default-server/https-listener=https:remove()
 /subsystem=undertow/server=default-server/https-listener=https:add(socket-binding=https,ssl-context=httpsSSC,max-post-size=1048576)
 
+# HTTP (8080) выключен — сервис только по HTTPS
 /subsystem=undertow/server=default-server/http-listener=http:remove()
 
 stop-embedded-server
