@@ -1,5 +1,3 @@
-# Контекст сборки — корень репозитория:
-#   docker build -f deploy/payara/Dockerfile .
 FROM maven:3.9.9-eclipse-temurin-17 AS build
 WORKDIR /build
 COPY pom.xml moviesApi.yaml ./
@@ -17,7 +15,7 @@ COPY --from=build /root/.m2/repository/org/postgresql/postgresql/42.7.4/postgres
 COPY deploy/certs/out/keystore.jks \
      /opt/payara/glassfish/domains/domain1/config/keystore.jks
 
-# скрипт который отхерачивает http, HTTPS 8181 + JDBC-пул + деплой WAR (см. файл)
+# скрипт который отхерачивает http, HTTPS 8181 + JDBC-пул скриптом чтобы не заходить в админко + деплой WAR
 COPY deploy/payara/post-boot-commands.asadmin \
      /opt/payara/scripts/post-boot-commands.asadmin
 

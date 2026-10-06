@@ -5,7 +5,6 @@ embed-server --standalone-server --server-config=standalone.xml
 /subsystem=elytron/server-ssl-context=httpsSSC:add(key-manager=httpsKM,protocols=["TLSv1.2","TLSv1.3"])
 /subsystem=undertow/server=default-server/https-listener=https:add(socket-binding=https,ssl-context=httpsSSC,max-post-size=1048576)
 
-# HTTP (8080) выключен — сервис только по HTTPS
 /subsystem=undertow/server=default-server/http-listener=http:remove()
 
 stop-embedded-server

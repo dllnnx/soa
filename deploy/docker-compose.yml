@@ -9,7 +9,6 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      # для DBeaver с ноутбука: только через localhost сервера (SSH-туннель)
       - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U movies -d movies"]
@@ -25,7 +24,7 @@ services:
     platform: linux/amd64
     ports:
       - "8181:8181"
-      # админ-консоль Payara — только с локальной машины (admin/admin)
+      # админ-консоль Payara
       - "127.0.0.1:4848:4848"
     depends_on:
       postgres:
