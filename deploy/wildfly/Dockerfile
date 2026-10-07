@@ -7,20 +7,38 @@ RUN mvn -f oscars-service/pom.xml -DskipTests package
 
 FROM quay.io/wildfly/wildfly:32.0.1.Final-jdk17
 
-COPY --chown=jboss:root deploy/certs/out/wildfly.p12 /opt/jboss/wildfly/standalone/configuration/wildfly.p12
+USER root
+
 COPY deploy/certs/out/ca.crt /tmp/ca.crt
 COPY deploy/wildfly/configure.cli /tmp/configure.cli
+COPY --chmod=755 deploy/wildfly/entrypoint.sh /usr/local/bin/soa-wildfly-entrypoint
 
-RUN /opt/jboss/wildfly/bin/jboss-cli.sh --file=/tmp/configure.cli \
+RUN keytool -genkeypair -noprompt \
+      -alias wildfly \
+      -keyalg RSA \
+      -keysize 2048 \
+      -dname "CN=localhost" \
+      -validity 1 \
+      -storetype PKCS12 \
+      -keystore /opt/jboss/wildfly/standalone/configuration/wildfly.p12 \
+      -storepass changeit \
+      -keypass changeit \
+ && /opt/jboss/wildfly/bin/jboss-cli.sh --file=/tmp/configure.cli \
+ && rm -f /opt/jboss/wildfly/standalone/configuration/wildfly.p12 \
  && rm -rf /opt/jboss/wildfly/standalone/configuration/standalone_xml_history
 
-USER root
 RUN keytool -importcert -noprompt -alias soa-lab-ca -file /tmp/ca.crt \
       -cacerts -storepass changeit \
  && rm -f /tmp/ca.crt /tmp/configure.cli
-USER jboss
 
 COPY --from=build /build/oscars-service/target/oscar.war \
      /opt/jboss/wildfly/standalone/deployments/
 
+# jboss-cli запускается выше от root и создаёт runtime-файлы от его имени.
+# Перед запуском сервера возвращаем standalone штатному пользователю образа.
+RUN chown -R jboss:root /opt/jboss/wildfly/standalone
+
 EXPOSE 8443
+
+ENTRYPOINT ["/usr/local/bin/soa-wildfly-entrypoint"]
+CMD ["-b", "0.0.0.0"]

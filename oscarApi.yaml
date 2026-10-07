@@ -5,8 +5,8 @@ info:
   description: |
     Управление Оскарами
 servers:
-  - url: http://localhost:8080
-    description: локальный сервер
+  - url: /
+    description: текущий HTTPS-шлюз
 tags:
   - name: Oscar
     description: Управление Оскарами

@@ -1,351 +1,194 @@
 package ru.itmo.movies.repository;
 
-import java.sql.Array;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Types;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
-import jakarta.annotation.Resource;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.TypedQuery;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaDelete;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 
-import javax.sql.DataSource;
-
-import ru.itmo.movies.model.Country;
-import ru.itmo.movies.model.Coordinates;
 import ru.itmo.movies.model.CoordinatesFilter;
-import ru.itmo.movies.model.EyeColor;
-import ru.itmo.movies.model.Location;
-import ru.itmo.movies.model.Movie;
 import ru.itmo.movies.model.MovieFilter;
 import ru.itmo.movies.model.MovieGenre;
-import ru.itmo.movies.model.MovieInput;
-import ru.itmo.movies.model.MoviePage;
 import ru.itmo.movies.model.MpaaRating;
-import ru.itmo.movies.model.Person;
 import ru.itmo.movies.model.PersonFilter;
 
 @ApplicationScoped
 public class MovieRepository {
 
-    @Resource(lookup = "jdbc/MoviesDS")
-    private DataSource dataSource;
+    @PersistenceContext(unitName = "moviesPU")
+    private EntityManager entityManager;
 
-    private static final String COLUMNS = """
-            id, name, coord_x, coord_y, creation_date, oscars_count, budget,
-            genre, mpaa_rating, sw_name, sw_height, sw_eye_color, sw_hair_color,
-            sw_nationality, sw_loc_x, sw_loc_y, sw_loc_z""";
-
-    public Movie insert(MovieInput movie) {
-        return query(connection -> {
-            String sql = "INSERT INTO movie (name, coord_x, coord_y, oscars_count, budget, genre, mpaa_rating, "
-                    + "sw_name, sw_height, sw_eye_color, sw_hair_color, sw_nationality, sw_loc_x, sw_loc_y, sw_loc_z) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING " + COLUMNS;
-            try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                bindMovie(ps, movie);
-                return mapOne(ps);
-            }
-        });
+    public MovieEntity insert(MovieEntity entity) {
+        entityManager.persist(entity);
+        entityManager.flush();
+        return entity;
     }
 
-    public Optional<Movie> find(int id) {
-        return query(connection -> {
-            try (PreparedStatement ps = connection.prepareStatement("SELECT " + COLUMNS + " FROM movie WHERE id = ?")) {
-                ps.setInt(1, id);
-                ResultSet rs = ps.executeQuery();
-                return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
-            }
-        });
+    public Optional<MovieEntity> find(int id) {
+        return Optional.ofNullable(entityManager.find(MovieEntity.class, (long) id));
     }
 
-    public Movie update(int id, MovieInput movie) {
-        return query(connection -> {
-            String sql = "UPDATE movie SET name = ?, coord_x = ?, coord_y = ?, oscars_count = ?, budget = ?, "
-                    + "genre = ?, mpaa_rating = ?, sw_name = ?, sw_height = ?, sw_eye_color = ?, sw_hair_color = ?, "
-                    + "sw_nationality = ?, sw_loc_x = ?, sw_loc_y = ?, sw_loc_z = ? WHERE id = ? RETURNING " + COLUMNS;
-            try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                bindMovie(ps, movie);
-                ps.setInt(16, id);
-                return mapOne(ps);
-            }
-        });
+    public void delete(MovieEntity entity) {
+        entityManager.remove(entity);
     }
 
-    public boolean delete(int id) {
-        return query(connection -> {
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM movie WHERE id = ?")) {
-                ps.setInt(1, id);
-                return ps.executeUpdate() > 0;
-            }
-        });
-    }
+    public MovieEntityPage filter(MovieFilter filter, int page, int size, SortOrder sort) {
+        CriteriaBuilder builder = entityManager.getCriteriaBuilder();
 
-    public MoviePage filter(MovieFilter filter, int page, int size, SortOrder sort) {
-        return query(connection -> {
-            List<String> conditions = new ArrayList<>();
-            List<Object> params = new ArrayList<>();
-            appendFilters(connection, filter, conditions, params);
-            String where = conditions.isEmpty() ? "" : " WHERE " + String.join(" AND ", conditions);
+        CriteriaQuery<Long> countCriteria = builder.createQuery(Long.class);
+        Root<MovieEntity> countRoot = countCriteria.from(MovieEntity.class);
+        countCriteria.select(builder.count(countRoot));
+        countCriteria.where(buildPredicates(filter, builder, countRoot));
+        long totalElements = entityManager.createQuery(countCriteria).getSingleResult();
 
-            long totalElements = count(connection, where, params);
-            List<Movie> content = totalElements == 0
-                    ? List.of()
-                    : selectPage(connection, where, params, sort, page, size);
+        List<MovieEntity> content = List.of();
+        if (totalElements > 0) {
+            CriteriaQuery<MovieEntity> pageCriteria = builder.createQuery(MovieEntity.class);
+            Root<MovieEntity> pageRoot = pageCriteria.from(MovieEntity.class);
+            pageCriteria.select(pageRoot);
+            pageCriteria.where(buildPredicates(filter, builder, pageRoot));
 
-            MoviePage result = new MoviePage();
-            result.setPage(page);
-            result.setSize(size);
-            result.setTotalElements(totalElements);
-            result.setTotalPages((int) Math.ceil(totalElements / (double) size));
-            result.setContent(content);
-            return result;
-        });
+            var primaryOrder = sort.ascending()
+                    ? builder.asc(pageRoot.get(sort.key().getAttribute()))
+                    : builder.desc(pageRoot.get(sort.key().getAttribute()));
+            pageCriteria.orderBy(primaryOrder, builder.asc(pageRoot.get("id")));
+
+            content = entityManager.createQuery(pageCriteria)
+                    .setFirstResult(page * size)
+                    .setMaxResults(size)
+                    .getResultList();
+        }
+
+        return new MovieEntityPage(content, page, size, totalElements);
     }
 
     public double averageBudget() {
-        return query(connection -> {
-            try (PreparedStatement ps = connection.prepareStatement(
-                    "SELECT COALESCE(AVG(budget), 0) FROM movie WHERE budget IS NOT NULL")) {
-                ResultSet rs = ps.executeQuery();
-                rs.next();
-                return rs.getDouble(1);
-            }
-        });
+        CriteriaBuilder builder = entityManager.getCriteriaBuilder();
+        CriteriaQuery<Double> criteria = builder.createQuery(Double.class);
+        Root<MovieEntity> root = criteria.from(MovieEntity.class);
+        criteria.select(builder.avg(root.get("budget")))
+                .where(builder.isNotNull(root.get("budget")));
+        Double average = entityManager.createQuery(criteria).getSingleResult();
+        return average == null ? 0 : average;
     }
 
     public long deleteByMpaaRating(MpaaRating rating) {
-        return query(connection -> {
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM movie WHERE mpaa_rating = ?")) {
-                ps.setString(1, rating.name());
-                return (long) ps.executeUpdate();
-            }
-        });
+        CriteriaBuilder builder = entityManager.getCriteriaBuilder();
+        CriteriaDelete<MovieEntity> criteria = builder.createCriteriaDelete(MovieEntity.class);
+        Root<MovieEntity> root = criteria.from(MovieEntity.class);
+        criteria.where(builder.equal(root.get("mpaaRating"), rating.name()));
+        return entityManager.createQuery(criteria).executeUpdate();
     }
 
     public boolean deleteByScreenwriter(String name) {
-        return query(connection -> {
-            String sql = "DELETE FROM movie WHERE id = (SELECT id FROM movie WHERE sw_name = ? ORDER BY id LIMIT 1)";
-            try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                ps.setString(1, name);
-                return ps.executeUpdate() > 0;
-            }
-        });
-    }
+        CriteriaBuilder builder = entityManager.getCriteriaBuilder();
+        CriteriaQuery<MovieEntity> criteria = builder.createQuery(MovieEntity.class);
+        Root<MovieEntity> root = criteria.from(MovieEntity.class);
+        criteria.select(root)
+                .where(builder.equal(root.get("screenwriterName"), name))
+                .orderBy(builder.asc(root.get("id")));
 
-    private void bindMovie(PreparedStatement ps, MovieInput movie) throws SQLException {
-        ps.setString(1, movie.getName());
-        ps.setDouble(2, movie.getCoordinates().getX());
-        ps.setDouble(3, movie.getCoordinates().getY());
-        ps.setLong(4, movie.getOscarsCount());
-        setObject(ps, 5, movie.getBudget(), Types.INTEGER);
-        ps.setString(6, movie.getGenre().name());
-        ps.setString(7, movie.getMpaaRating().name());
-        setPerson(ps, 8, movie.getScreenwriter());
-    }
-
-    private void setPerson(PreparedStatement ps, int first, Person person) throws SQLException {
-        if (person == null) {
-            ps.setNull(first, Types.VARCHAR);
-            ps.setNull(first + 1, Types.DOUBLE);
-            ps.setNull(first + 2, Types.VARCHAR);
-            ps.setNull(first + 3, Types.VARCHAR);
-            ps.setNull(first + 4, Types.VARCHAR);
-            ps.setNull(first + 5, Types.REAL);
-            ps.setNull(first + 6, Types.INTEGER);
-            ps.setNull(first + 7, Types.BIGINT);
-            return;
+        TypedQuery<MovieEntity> query = entityManager.createQuery(criteria).setMaxResults(1);
+        List<MovieEntity> matches = query.getResultList();
+        if (matches.isEmpty()) {
+            return false;
         }
-        ps.setString(first, person.getName());
-        ps.setDouble(first + 1, person.getHeight());
-        ps.setString(first + 2, person.getEyeColor().name());
-        ps.setString(first + 3, person.getHairColor() == null ? null : person.getHairColor().getValue());
-        ps.setString(first + 4, person.getNationality().name());
-        ps.setFloat(first + 5, person.getLocation().getX());
-        ps.setInt(first + 6, person.getLocation().getY());
-        ps.setLong(first + 7, person.getLocation().getZ());
+        entityManager.remove(matches.get(0));
+        return true;
     }
 
-    private void appendFilters(Connection connection, MovieFilter filter,
-                               List<String> conditions, List<Object> params) throws SQLException {
+    private Predicate[] buildPredicates(MovieFilter filter, CriteriaBuilder builder, Root<MovieEntity> root) {
+        List<Predicate> predicates = new ArrayList<>();
+
         if (filter.getIds() != null && !filter.getIds().isEmpty()) {
-            conditions.add("id = ANY(?)");
-            params.add(connection.createArrayOf("integer", filter.getIds().toArray(new Integer[0])));
+            List<Long> ids = filter.getIds().stream().map(Integer::longValue).toList();
+            predicates.add(root.<Long>get("id").in(ids));
         }
         if (notBlank(filter.getName())) {
-            conditions.add("name ILIKE ?");
-            params.add("%" + filter.getName() + "%");
+            predicates.add(containsIgnoreCase(builder, root.get("name"), filter.getName()));
         }
         CoordinatesFilter coordinates = filter.getCoordinates();
         if (coordinates != null) {
-            range(conditions, params, "coord_x", coordinates.getxFrom(), coordinates.getxTo());
-            range(conditions, params, "coord_y", coordinates.getyFrom(), coordinates.getyTo());
+            range(builder, root.get("coordinateX"), coordinates.getxFrom(), coordinates.getxTo(), predicates);
+            range(builder, root.get("coordinateY"), coordinates.getyFrom(), coordinates.getyTo(), predicates);
         }
         if (filter.getCreationDateBefore() != null) {
-            conditions.add("creation_date < ?");
-            params.add(filter.getCreationDateBefore());
+            predicates.add(builder.lessThan(
+                    root.get("creationDate"), filter.getCreationDateBefore()));
         }
         if (filter.getCreationDateAfter() != null) {
-            conditions.add("creation_date > ?");
-            params.add(filter.getCreationDateAfter());
+            predicates.add(builder.greaterThan(
+                    root.get("creationDate"), filter.getCreationDateAfter()));
         }
-        range(conditions, params, "oscars_count", filter.getOscarsCountFrom(), filter.getOscarsCountTo());
-        range(conditions, params, "budget", filter.getBudgetFrom(), filter.getBudgetTo());
+        range(builder, root.get("oscarsCount"),
+                filter.getOscarsCountFrom(), filter.getOscarsCountTo(), predicates);
+        range(builder, root.get("budget"), filter.getBudgetFrom(), filter.getBudgetTo(), predicates);
         if (filter.getGenres() != null && !filter.getGenres().isEmpty()) {
-            conditions.add("genre = ANY(?)");
-            params.add(connection.createArrayOf("varchar",
-                    filter.getGenres().stream().map(MovieGenre::name).toArray()));
+            predicates.add(root.<String>get("genre")
+                    .in(filter.getGenres().stream().map(MovieGenre::name).toList()));
         }
         if (filter.getMpaaRating() != null) {
-            conditions.add("mpaa_rating = ?");
-            params.add(filter.getMpaaRating().name());
+            predicates.add(builder.equal(root.get("mpaaRating"), filter.getMpaaRating().name()));
         }
+
         PersonFilter screenwriter = filter.getScreenwriter();
         if (screenwriter != null) {
             if (notBlank(screenwriter.getName())) {
-                conditions.add("sw_name ILIKE ?");
-                params.add("%" + screenwriter.getName() + "%");
+                predicates.add(containsIgnoreCase(
+                        builder, root.get("screenwriterName"), screenwriter.getName()));
             }
-            range(conditions, params, "sw_height", screenwriter.getHeightFrom(), screenwriter.getHeightTo());
-            eq(conditions, params, "sw_eye_color", screenwriter.getEyeColor());
-            eq(conditions, params, "sw_hair_color", screenwriter.getHairColor());
-            eq(conditions, params, "sw_nationality", screenwriter.getNationality());
+            range(builder, root.get("screenwriterHeight"),
+                    screenwriter.getHeightFrom(), screenwriter.getHeightTo(), predicates);
+            equalEnum(builder, root, "screenwriterEyeColor", screenwriter.getEyeColor(), predicates);
+            equalEnum(builder, root, "screenwriterHairColor", screenwriter.getHairColor(), predicates);
+            equalEnum(builder, root, "screenwriterNationality", screenwriter.getNationality(), predicates);
             if (screenwriter.getLocation() != null) {
-                range(conditions, params, "sw_loc_x",
-                        screenwriter.getLocation().getxFrom(), screenwriter.getLocation().getxTo());
-                range(conditions, params, "sw_loc_y",
-                        screenwriter.getLocation().getyFrom(), screenwriter.getLocation().getyTo());
-                range(conditions, params, "sw_loc_z",
-                        screenwriter.getLocation().getzFrom(), screenwriter.getLocation().getzTo());
+                range(builder, root.get("screenwriterLocationX"),
+                        screenwriter.getLocation().getxFrom(), screenwriter.getLocation().getxTo(), predicates);
+                range(builder, root.get("screenwriterLocationY"),
+                        screenwriter.getLocation().getyFrom(), screenwriter.getLocation().getyTo(), predicates);
+                range(builder, root.get("screenwriterLocationZ"),
+                        screenwriter.getLocation().getzFrom(), screenwriter.getLocation().getzTo(), predicates);
             }
         }
+
+        return predicates.toArray(Predicate[]::new);
     }
 
-    private long count(Connection connection, String where, List<Object> params) throws SQLException {
-        try (PreparedStatement ps = connection.prepareStatement("SELECT COUNT(*) FROM movie" + where)) {
-            bind(ps, params);
-            ResultSet rs = ps.executeQuery();
-            rs.next();
-            return rs.getLong(1);
-        }
+    private Predicate containsIgnoreCase(CriteriaBuilder builder, Path<String> path, String value) {
+        return builder.like(builder.lower(path), "%" + value.toLowerCase(Locale.ROOT) + "%");
     }
 
-    private List<Movie> selectPage(Connection connection, String where, List<Object> params,
-                                   SortOrder sort, int page, int size) throws SQLException {
-        String sql = "SELECT " + COLUMNS + " FROM movie" + where + " ORDER BY " + sort.key().getColumn()
-                + (sort.ascending() ? " ASC" : " DESC") + ", id LIMIT ? OFFSET ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            bind(ps, params);
-            ps.setInt(params.size() + 1, size);
-            ps.setInt(params.size() + 2, page * size);
-            ResultSet rs = ps.executeQuery();
-            List<Movie> movies = new ArrayList<>();
-            while (rs.next()) {
-                movies.add(mapRow(rs));
-            }
-            return movies;
-        }
-    }
-
-    private void bind(PreparedStatement ps, List<Object> params) throws SQLException {
-        int index = 1;
-        for (Object param : params) {
-            if (param instanceof Array array) {
-                ps.setArray(index, array);
-            } else {
-                ps.setObject(index, param);
-            }
-            index++;
-        }
-    }
-
-    private void range(List<String> conditions, List<Object> params, String column, Number from, Number to) {
+    private void range(CriteriaBuilder builder, Expression<? extends Number> path,
+                       Number from, Number to, List<Predicate> predicates) {
         if (from != null) {
-            conditions.add(column + " > ?");
-            params.add(from);
+            predicates.add(builder.gt(path, from));
         }
         if (to != null) {
-            conditions.add(column + " < ?");
-            params.add(to);
+            predicates.add(builder.lt(path, to));
         }
     }
 
-    private void eq(List<String> conditions, List<Object> params, String column, Enum<?> value) {
+    private void equalEnum(CriteriaBuilder builder, Root<MovieEntity> root, String attribute,
+                           Enum<?> value, List<Predicate> predicates) {
         if (value != null) {
-            conditions.add(column + " = ?");
-            params.add(value.name());
+            predicates.add(builder.equal(root.get(attribute), value.name()));
         }
     }
 
     private boolean notBlank(String value) {
         return value != null && !value.isBlank();
-    }
-
-    private Movie mapOne(PreparedStatement ps) throws SQLException {
-        ResultSet rs = ps.executeQuery();
-        return rs.next() ? mapRow(rs) : null;
-    }
-
-    private Movie mapRow(ResultSet rs) throws SQLException {
-        Movie movie = new Movie();
-        movie.setId(rs.getInt("id"));
-        movie.setName(rs.getString("name"));
-        Coordinates coordinates = new Coordinates();
-        coordinates.setX(rs.getDouble("coord_x"));
-        coordinates.setY(rs.getDouble("coord_y"));
-        movie.setCoordinates(coordinates);
-        movie.setCreationDate(rs.getObject("creation_date", OffsetDateTime.class));
-        movie.setOscarsCount(rs.getLong("oscars_count"));
-        int budget = rs.getInt("budget");
-        movie.setBudget(rs.wasNull() ? null : budget);
-        movie.setGenre(MovieGenre.valueOf(rs.getString("genre")));
-        movie.setMpaaRating(MpaaRating.valueOf(rs.getString("mpaa_rating")));
-        movie.setScreenwriter(mapPerson(rs));
-        return movie;
-    }
-
-    private Person mapPerson(ResultSet rs) throws SQLException {
-        String name = rs.getString("sw_name");
-        if (name == null) {
-            return null;
-        }
-        Person person = new Person();
-        person.setName(name);
-        person.setHeight(rs.getDouble("sw_height"));
-        person.setEyeColor(EyeColor.valueOf(rs.getString("sw_eye_color")));
-        String hairColor = rs.getString("sw_hair_color");
-        person.setHairColor(hairColor == null ? null : Person.HairColorEnum.fromValue(hairColor));
-        person.setNationality(Country.valueOf(rs.getString("sw_nationality")));
-        Location location = new Location();
-        location.setX(rs.getFloat("sw_loc_x"));
-        location.setY(rs.getInt("sw_loc_y"));
-        location.setZ(rs.getLong("sw_loc_z"));
-        person.setLocation(location);
-        return person;
-    }
-
-    private void setObject(PreparedStatement ps, int index, Number value, int type) throws SQLException {
-        if (value == null) {
-            ps.setNull(index, type);
-        } else {
-            ps.setObject(index, value, type);
-        }
-    }
-
-    @FunctionalInterface
-    private interface SqlCall<T> {
-        T run(Connection connection) throws SQLException;
-    }
-
-    private <T> T query(SqlCall<T> call) {
-        try (Connection connection = dataSource.getConnection()) {
-            return call.run(connection);
-        } catch (SQLException e) {
-            throw new IllegalStateException("Ошибка обращения к базе данных", e);
-        }
     }
 }

@@ -93,7 +93,6 @@ function App() {
   const [serverTotalPages, setServerTotalPages] = useState(0);
   const [averageBudget, setAverageBudget] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [apiOnline, setApiOnline] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [movieModal, setMovieModal] = useState<{ mode: 'create' | 'edit'; movie?: Movie } | null>(null);
@@ -117,6 +116,16 @@ function App() {
     setToast({ kind: 'error', title, message: error instanceof Error ? error.message : 'Неизвестная ошибка' });
   };
 
+  const handleSort = (field: string) => {
+    setPage(0);
+    if (field === sortField) {
+      setSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortField(field);
+    setSortDirection('asc');
+  };
+
   const loadAverage = async () => {
     try {
       const result = await api<{ averageBudget: number }>('/movies/average-budget');
@@ -134,10 +143,8 @@ function App() {
       setMovies(result.content);
       setTotalElements(result.totalElements);
       setServerTotalPages(result.totalPages);
-      setApiOnline(true);
       if (result.totalPages > 0 && page >= result.totalPages) setPage(result.totalPages - 1);
     } catch (error) {
-      setApiOnline(false);
       showError('Не удалось загрузить фильмы', error);
     } finally {
       setLoading(false);
@@ -290,7 +297,6 @@ function App() {
             {currentJob && <span className="nav-pulse" />}
           </button>
         </nav>
-        <div className={`service-state ${apiOnline ? '' : 'offline'}`}><span /> API · {apiOnline ? 'подключено' : 'недоступно'}</div>
       </header>
 
       <main>
@@ -301,7 +307,7 @@ function App() {
                 <h1>Фильмы</h1>
               </div>
               <div className="heading-actions">
-                <button className="button secondary" onClick={() => setToolsOpen(true)}><MoreHorizontal size={18} /> Инструменты</button>
+                <button className="button secondary" onClick={() => setToolsOpen(true)}><MoreHorizontal size={18} /> Дополнительно</button>
                 <button className="button primary" onClick={() => setMovieModal({ mode: 'create' })}><Plus size={18} /> Создать фильм</button>
               </div>
             </section>
@@ -314,15 +320,12 @@ function App() {
 
             <section className="table-card">
               <div className="table-toolbar">
-                <div className="search-box"><Search size={18} /><input value={filters.name} onChange={(event) => applyQuickSearch(event.target.value)} placeholder="Название фильма…" /><kbd>⌘ K</kbd></div>
+                <div className="search-box"><Search size={18} /><input value={filters.name} onChange={(event) => applyQuickSearch(event.target.value)} placeholder="Название фильма…" /></div>
                 <div className="toolbar-group">
                   <button className={`button filter-button ${activeFilterCount(filters) ? 'has-filters' : ''}`} onClick={() => { setDraftFilters(filters); setFiltersOpen(true); }}>
                     <Filter size={17} /> Фильтры {activeFilterCount(filters) > 0 && <span>{activeFilterCount(filters)}</span>}
                   </button>
-                  <label className="sort-control"><span>Сортировка</span><select value={sortField} onChange={(event) => { setSortField(event.target.value); setPage(0); }}>{sortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                  <button className="icon-button direction" onClick={() => setSortDirection((value) => value === 'asc' ? 'desc' : 'asc')} title="Изменить направление сортировки">
-                    {sortDirection === 'asc' ? <ArrowUp size={18} /> : <ArrowDown size={18} />}
-                  </button>
+                  <label className="sort-control"><span>Сортировка</span><select value={sortField} onChange={(event) => handleSort(event.target.value)}>{sortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                 </div>
               </div>
 
@@ -340,13 +343,13 @@ function App() {
                 <table>
                   <thead><tr>
                     <th className="expander-cell" />
-                    <SortableTh label="ID" field="id" current={sortField} direction={sortDirection} onSort={setSortField} />
-                    <SortableTh label="Фильм" field="name" current={sortField} direction={sortDirection} onSort={setSortField} />
+                    <SortableTh label="ID" field="id" current={sortField} direction={sortDirection} onSort={handleSort} />
+                    <SortableTh label="Фильм" field="name" current={sortField} direction={sortDirection} onSort={handleSort} />
                     <th>Сценарист</th>
-                    <SortableTh label="Бюджет" field="budget" current={sortField} direction={sortDirection} onSort={setSortField} />
-                    <SortableTh label="Оскары" field="oscars-count" current={sortField} direction={sortDirection} onSort={setSortField} />
-                    <SortableTh label="MPAA" field="mpaa-rating" current={sortField} direction={sortDirection} onSort={setSortField} />
-                    <SortableTh label="Добавлен" field="creation-date" current={sortField} direction={sortDirection} onSort={setSortField} />
+                    <SortableTh label="Бюджет" field="budget" current={sortField} direction={sortDirection} onSort={handleSort} />
+                    <SortableTh label="Оскары" field="oscars-count" current={sortField} direction={sortDirection} onSort={handleSort} />
+                    <SortableTh label="MPAA" field="mpaa-rating" current={sortField} direction={sortDirection} onSort={handleSort} />
+                    <SortableTh label="Добавлен" field="creation-date" current={sortField} direction={sortDirection} onSort={handleSort} />
                     <th aria-label="Действия" />
                   </tr></thead>
                   <tbody>
@@ -379,7 +382,9 @@ function Metric({ icon, label, value, note, tone, loading }: { icon: React.React
 }
 
 function SortableTh({ label, field, current, direction, onSort }: { label: string; field: string; current: string; direction: SortDirection; onSort: (field: string) => void }) {
-  return <th><button className={current === field ? 'sort-active' : ''} onClick={() => onSort(field)}>{label}{current === field ? direction === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} /> : <ChevronsUpDown size={13} />}</button></th>;
+  const active = current === field;
+  const nextDirection = active && direction === 'asc' ? 'desc' : 'asc';
+  return <th aria-sort={active ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}><button className={active ? 'sort-active' : ''} onClick={() => onSort(field)} title={`Сортировать ${nextDirection === 'asc' ? 'по возрастанию' : 'по убыванию'}`}>{label}{active ? direction === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} /> : <ChevronsUpDown size={13} />}</button></th>;
 }
 
 function MovieRows({ item, expanded, onToggle, onEdit, onDelete }: { item: Movie; expanded: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void }) {
@@ -533,9 +538,9 @@ function MovieModal({ mode, movie, writers, onClose, onSave }: { mode: 'create' 
 function ToolsModal({ movies, writers, averageBudget, onClose, onDeleteMpaa, onDeleteWriter }: { movies: Movie[]; writers: Person[]; averageBudget: number; onClose: () => void; onDeleteMpaa: (rating: string) => void; onDeleteWriter: (name: string) => void }) {
   const [rating, setRating] = useState('R');
   const [writer, setWriter] = useState(writers[0]?.name ?? '');
-  return <div className="overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal tools-modal"><div className="modal-heading"><div><span className="modal-icon"><SlidersHorizontal size={19} /></span><div><h2>Инструменты коллекции</h2><p>Дополнительные операции с фильмами</p></div></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><div className="modal-body tools-grid">
+  return <div className="overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal tools-modal"><div className="modal-heading"><div><span className="modal-icon"><SlidersHorizontal size={19} /></span><div><h2>Дополнительно</h2><p>Операции с коллекцией фильмов</p></div></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><div className="modal-body tools-grid">
     <article className="tool-item"><span className="tool-icon green"><BarChart3 /></span><div><small>GET /movies/average-budget</small><h3>Средний бюджет</h3><strong>{formatMoney(averageBudget)}</strong><p>Рассчитано по {movies.filter((item) => item.budget != null).length} фильмам с указанным бюджетом.</p></div></article>
-    <article className="tool-item danger-tool"><span className="tool-icon red"><Trash2 /></span><div><small>DELETE /movies/by-mpaa-rating</small><h3>Удалить по рейтингу</h3><p>Будут удалены все фильмы с выбранным MPAA.</p><div className="tool-action"><select value={rating} onChange={(e) => setRating(e.target.value)}>{MPAA.map((item) => <option key={item} value={item}>{item.replace('_', '-')}</option>)}</select><button onClick={() => onDeleteMpaa(rating)}>Удалить {movies.filter((item) => item.mpaaRating === rating).length}</button></div></div></article>
+    <article className="tool-item danger-tool"><span className="tool-icon red"><Trash2 /></span><div><small>DELETE /movies/by-mpaa-rating</small><h3>Удалить по рейтингу</h3><p>Будут удалены все фильмы с выбранным MPAA.</p><div className="tool-action"><select value={rating} onChange={(e) => setRating(e.target.value)}>{MPAA.map((item) => <option key={item} value={item}>{item.replace('_', '-')}</option>)}</select><button onClick={() => onDeleteMpaa(rating)}>Удалить</button></div></div></article>
     <article className="tool-item danger-tool"><span className="tool-icon orange"><UserRound /></span><div><small>DELETE /movies/by-screenwriter</small><h3>Удалить один фильм</h3><p>Удалится первый найденный фильм указанного сценариста.</p><div className="tool-action"><select value={writer} onChange={(e) => setWriter(e.target.value)}>{writers.map((item) => <option key={item.name}>{item.name}</option>)}</select><button onClick={() => onDeleteWriter(writer)}>Удалить</button></div></div></article>
   </div><div className="modal-footer"><button className="button secondary" onClick={onClose}>Закрыть</button></div></div></div>;
 }

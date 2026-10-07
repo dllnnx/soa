@@ -1,18 +1,19 @@
 package ru.itmo.movies.api;
 
 import jakarta.inject.Inject;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.UriInfo;
 
 import ru.itmo.movies.model.AverageBudget;
 import ru.itmo.movies.model.DeleteResult;
-import ru.itmo.movies.parse.QueryParams;
+import ru.itmo.movies.model.MpaaRating;
 import ru.itmo.movies.service.MovieService;
 
 @Path("movies")
@@ -30,16 +31,17 @@ public class MovieSpecialResource {
 
     @DELETE
     @Path("by-mpaa-rating")
-    public DeleteResult deleteByMpaaRating(@Context UriInfo uri) {
-        QueryParams.allow(uri, "mpaa-rating");
-        return service.deleteByMpaaRating(QueryParams.mpaaRating(uri));
+    public DeleteResult deleteByMpaaRating(
+            @QueryParam("mpaa-rating") @NotNull MpaaRating mpaaRating) {
+        return service.deleteByMpaaRating(mpaaRating);
     }
 
     @DELETE
     @Path("by-screenwriter")
-    public Response deleteByScreenwriter(@Context UriInfo uri) {
-        QueryParams.allow(uri, "name");
-        service.deleteByScreenwriter(QueryParams.screenwriterName(uri));
+    public Response deleteByScreenwriter(
+            @QueryParam("name") @NotNull
+            @Pattern(regexp = "^[a-zA-Zа-яА-ЯЁё0-9 .,:!?()&-]{1,255}$") String name) {
+        service.deleteByScreenwriter(name);
         return Response.noContent().build();
     }
 }

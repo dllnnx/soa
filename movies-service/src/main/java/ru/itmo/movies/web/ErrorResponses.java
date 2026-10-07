@@ -19,7 +19,9 @@ public final class ErrorResponses {
     }
 
     public static Response of(int status, ErrorCode code, String message, List<FieldError> details) {
-        String body = Json.write(new Error(status, code, message, details));
-        return Response.status(status).type(MediaType.APPLICATION_JSON).entity(body).build();
+        return Response.status(status)
+                .type(MediaType.APPLICATION_JSON)
+                .entity(new Error(status, code, message, details))
+                .build();
     }
 }

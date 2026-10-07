@@ -32,7 +32,7 @@ public class OscarController {
     }
 
     @PostMapping("/reset-oscars-by-genre/{genre}")
-    public ResponseEntity<JobAccepted> resetOscarsByGenre(@PathVariable String genre) {
+    public ResponseEntity<JobAccepted> resetOscarsByGenre(@PathVariable("genre") String genre) {
         var parsedGenre = parseGenre(genre);
         return ResponseEntity.accepted()
                 .body(jobService.submit(() -> oscarService.resetOscarsByGenre(parsedGenre)));

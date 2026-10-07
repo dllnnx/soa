@@ -1,5 +1,5 @@
 # Только HTTPS: http-listener-1 (8080) выключен,
-# http-listener-2 (8181) включён с TLS-сертификатом alias s1as из keystore.p12
+# http-listener-2 (8181) включён с TLS-сертификатом alias s1as из JKS-хранилища
 set configs.config.server-config.network-config.network-listeners.network-listener.http-listener-1.enabled=false
 set configs.config.server-config.network-config.network-listeners.network-listener.http-listener-2.enabled=true
 set configs.config.server-config.network-config.protocols.protocol.http-listener-2.security-enabled=true

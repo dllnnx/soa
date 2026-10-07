@@ -8,8 +8,6 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U movies -d movies"]
       interval: 5s
@@ -28,6 +26,8 @@ services:
       - "8181:8181"
       # админ-консоль Payara
       - "127.0.0.1:4848:4848"
+    volumes:
+      - ./certs/out/keystore.jks:/run/secrets/payara.jks:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,8 +42,22 @@ services:
       JBOSS_JAVA_SIZING: "-Xms64m -Xmx256m -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8443:8443"
+    volumes:
+      - ./certs/out/wildfly.p12:/run/secrets/wildfly.p12:ro
     depends_on:
       - payara
+
+  swagger-ui:
+    image: docker.swagger.io/swaggerapi/swagger-ui:v5.33.1
+    environment:
+      URLS: '[{"url":"/docs/moviesApi.yaml","name":"Movies Service"},{"url":"/docs/oscarApi.yaml","name":"Oscars Service"}]'
+      URLS_PRIMARY_NAME: "Movies Service"
+      DEEP_LINKING: "true"
+      DISPLAY_REQUEST_DURATION: "true"
+      TRY_IT_OUT_ENABLED: "true"
+    volumes:
+      - ../moviesApi.yaml:/usr/share/nginx/html/moviesApi.yaml:ro
+      - ../oscarApi.yaml:/usr/share/nginx/html/oscarApi.yaml:ro
 
   frontend:
     build: ../frontend
@@ -57,6 +71,7 @@ services:
     depends_on:
       - payara
       - wildfly
+      - swagger-ui
 
 volumes:
   pgdata:

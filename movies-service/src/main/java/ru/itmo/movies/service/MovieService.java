@@ -2,53 +2,58 @@ package ru.itmo.movies.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 
 import ru.itmo.movies.error.ApiException;
 import ru.itmo.movies.model.AverageBudget;
 import ru.itmo.movies.model.DeleteResult;
 import ru.itmo.movies.error.ErrorCode;
+import ru.itmo.movies.mapper.MovieMapper;
 import ru.itmo.movies.model.Movie;
 import ru.itmo.movies.model.MovieFilter;
 import ru.itmo.movies.model.MovieInput;
 import ru.itmo.movies.model.MoviePage;
 import ru.itmo.movies.model.MpaaRating;
+import ru.itmo.movies.repository.MovieEntity;
+import ru.itmo.movies.repository.MovieEntityPage;
 import ru.itmo.movies.repository.MovieRepository;
 import ru.itmo.movies.repository.SortOrder;
-import ru.itmo.movies.validation.MovieValidator;
 
 @ApplicationScoped
+@Transactional
 public class MovieService {
 
     @Inject
     private MovieRepository repository;
 
+    @Inject
+    private MovieMapper mapper;
+
     public Movie create(MovieInput input) {
-        MovieValidator.validateForCreate(input);
-        return repository.insert(input);
+        MovieEntity entity = mapper.toEntity(input);
+        return mapper.toModel(repository.insert(entity));
     }
 
     public Movie get(int id) {
-        return repository.find(id).orElseThrow(() -> movieNotFound(id));
+        MovieEntity entity = repository.find(id).orElseThrow(() -> movieNotFound(id));
+        return mapper.toModel(entity);
     }
 
     public Movie update(int id, MovieInput input) {
-        MovieValidator.validateForUpdate(input);
-        Movie updated = repository.update(id, input);
-        if (updated == null) {
-            throw movieNotFound(id);
-        }
-        return updated;
+        MovieEntity entity = repository.find(id).orElseThrow(() -> movieNotFound(id));
+        mapper.updateEntity(input, entity);
+        return mapper.toModel(entity);
     }
 
     public void delete(int id) {
-        if (!repository.delete(id)) {
-            throw movieNotFound(id);
-        }
+        MovieEntity entity = repository.find(id).orElseThrow(() -> movieNotFound(id));
+        repository.delete(entity);
     }
 
     public MoviePage filter(MovieFilter filter, int page, int size, SortOrder sort) {
-        MovieValidator.validateFilter(filter);
-        return repository.filter(filter, page, size, sort);
+        MovieEntityPage result = repository.filter(filter, page, size, sort);
+        return mapper.toPage(
+                result.content(), result.page(), result.size(), result.totalElements());
     }
 
     public AverageBudget getAverageBudget() {
