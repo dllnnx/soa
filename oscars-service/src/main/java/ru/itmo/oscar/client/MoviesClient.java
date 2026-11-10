@@ -1,98 +1,51 @@
 package ru.itmo.oscar.client;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
-
-import ru.itmo.oscar.model.Movie;
-import ru.itmo.oscar.model.MovieGenre;
-import ru.itmo.oscar.model.MovieInput;
-import ru.itmo.oscar.model.MoviePage;
-import ru.itmo.oscar.model.MpaaRating;
+import ru.itmo.oscar.model.OperationCommand;
+import ru.itmo.oscar.model.OperationResult;
 
 @Component
 public class MoviesClient {
-
-    private static final int PAGE_SIZE = 100;
-
-    private final RestClient restClient;
+    private final RestClient client;
 
     public MoviesClient(RestClient moviesRestClient) {
-        this.restClient = moviesRestClient;
+        this.client = moviesRestClient;
     }
 
-    public List<Movie> findByMpaaRating(MpaaRating rating) {
-        return findAll(Map.of("mpaaRating", rating));
-    }
-
-    public List<Movie> findByGenre(MovieGenre genre) {
-        return findAll(Map.of("genres", List.of(genre)));
-    }
-
-    public List<Movie> findAll() {
-        return findAll(Map.of());
-    }
-
-    public void update(Integer id, MovieInput movie) {
+    public OperationResult execute(OperationCommand command) {
         try {
-            restClient.put()
-                    .uri("/movies/{id}", id)
+            var result = client.post().uri("/internal/operations")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(movie)
+                    .body(command)
                     .retrieve()
-                    .toBodilessEntity();
+                    .body(OperationResult.class);
+
+            if (result == null || !command.jobId().equals(result.jobId()) || result.status() == null) {
+                throw new MoviesServiceException("Movies вернул неподтверждённый результат", true);
+            }
+
+            boolean valid = switch (result.status()) {
+                case COMPLETED -> !result.retryable() && result.updatedCount() != null && result.updatedCount() >= 0;
+                case FAILED -> !result.retryable() && result.errorMessage() != null;
+                case PENDING -> result.retryable();
+            };
+
+            if (!valid) throw new MoviesServiceException("Movies вернул некорректный статус операции", true);
+            return result;
         } catch (RestClientResponseException exception) {
-            throw downstreamError(exception);
-        } catch (RuntimeException exception) {
-            throw new MoviesServiceException("Сервис movies недоступен: " + exception.getMessage());
+            var status = exception.getStatusCode();
+            boolean retryable = status.is5xxServerError()
+                    || status.isSameCodeAs(HttpStatus.NOT_FOUND)
+                    || status.isSameCodeAs(HttpStatus.REQUEST_TIMEOUT)
+                    || status.isSameCodeAs(HttpStatus.TOO_MANY_REQUESTS);
+            throw new MoviesServiceException("internal API movies вернуло HTTP " + status.value(), retryable);
+        } catch (RestClientException exception) {
+            throw new MoviesServiceException("Результат movies не получен: " + exception.getClass().getSimpleName(), true);
         }
-    }
-
-    private List<Movie> findAll(Map<String, ?> filter) {
-        var movies = new ArrayList<Movie>();
-        var pageNumber = 0;
-        while (true) {
-            MoviePage page;
-            try {
-                int requestedPage = pageNumber;
-                page = restClient.post()
-                        .uri(builder -> builder
-                                .path("/movies/filter")
-                                .queryParam("page", requestedPage)
-                                .queryParam("size", PAGE_SIZE)
-                                .build())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(filter)
-                        .retrieve()
-                        .body(MoviePage.class);
-            } catch (RestClientResponseException exception) {
-                throw downstreamError(exception);
-            } catch (RuntimeException exception) {
-                throw new MoviesServiceException("Сервис movies недоступен: " + exception.getMessage());
-            }
-            if (page == null || page.content() == null) {
-                throw new MoviesServiceException("Сервис movies вернул пустой ответ");
-            }
-            movies.addAll(page.content());
-            pageNumber++;
-            if (pageNumber >= page.totalPages()) {
-                return movies;
-            }
-        }
-    }
-
-    private MoviesServiceException downstreamError(RestClientResponseException exception) {
-        var body = exception.getResponseBodyAsString();
-        if (body.length() > 500) {
-            body = body.substring(0, 500);
-        }
-        var suffix = body.isBlank() ? "" : ": " + body;
-        return new MoviesServiceException("Сервис movies вернул HTTP "
-                + exception.getStatusCode().value() + suffix);
     }
 }

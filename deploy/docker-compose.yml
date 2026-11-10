@@ -9,7 +9,33 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U movies -d movies"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U movies -d movies"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  movies-migrate:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: movies
+    entrypoint: ["psql", "-h", "postgres", "-U", "movies", "-d", "movies", "-v", "ON_ERROR_STOP=1", "-f", "/migrations/V002__movie_operations.sql"]
+    command: []
+    volumes:
+      - ./postgres/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  oscars-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: oscars
+      POSTGRES_USER: oscars
+      POSTGRES_PASSWORD: ${OSCARS_DB_PASSWORD:-oscars}
+    volumes:
+      - oscars-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U oscars -d oscars"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -21,6 +47,9 @@ services:
     image: soa/movies-service
     platform: linux/amd64
     environment:
+      MOVIES_INTERNAL_TOKEN: ${MOVIES_INTERNAL_TOKEN:-soa-local-internal-token}
+      MOVIES_OPERATION_TIMEOUT_MS: ${MOVIES_OPERATION_TIMEOUT_MS:-5000}
+      MOVIES_OPERATION_MAX_ATTEMPTS: ${MOVIES_OPERATION_MAX_ATTEMPTS:-8}
       JVM_ARGS: "-Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8181:8181"
@@ -31,6 +60,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      movies-migrate:
+        condition: service_completed_successfully
 
   wildfly:
     build:
@@ -39,13 +70,19 @@ services:
     image: soa/oscars-service
     environment:
       MOVIES_SERVICE_URL: https://payara:8181
+      MOVIES_INTERNAL_TOKEN: ${MOVIES_INTERNAL_TOKEN:-soa-local-internal-token}
+      OSCARS_DB_URL: jdbc:postgresql://oscars-postgres:5432/oscars
+      OSCARS_DB_PASSWORD: ${OSCARS_DB_PASSWORD:-oscars}
       JBOSS_JAVA_SIZING: "-Xms64m -Xmx256m -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8443:8443"
     volumes:
       - ./certs/out/wildfly.p12:/run/secrets/wildfly.p12:ro
     depends_on:
-      - payara
+      payara:
+        condition: service_started
+      oscars-postgres:
+        condition: service_healthy
 
   swagger-ui:
     image: docker.swagger.io/swaggerapi/swagger-ui:v5.33.1
@@ -75,3 +112,4 @@ services:
 
 volumes:
   pgdata:
+  oscars-pgdata:

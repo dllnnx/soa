@@ -2,6 +2,7 @@ package ru.itmo.oscar.api;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataAccessException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -11,6 +12,11 @@ import ru.itmo.oscar.service.JobNotFoundException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<ApiError> storageUnavailable(DataAccessException exception) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "JOB_STORAGE_UNAVAILABLE", "Хранилище джоб временно недоступно");
+    }
 
     @ExceptionHandler(InvalidParameterException.class)
     public ResponseEntity<ApiError> invalidParameter(InvalidParameterException exception) {

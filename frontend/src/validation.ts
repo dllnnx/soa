@@ -5,7 +5,6 @@ export const NUMBER_MAX_LENGTH = 64;
 export const IDS_MAX_LENGTH = 2048;
 export const INT_MIN = -2147483648;
 export const INT_MAX = 2147483647;
-// JSON numbers are read as JavaScript numbers. Larger integers would lose precision.
 export const SAFE_LONG_MAX = Number.MAX_SAFE_INTEGER;
 export const FLOAT_MAX = 3.4028234663852886e38;
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle, ArrowDown, ArrowUp, Award, BarChart3, Check, ChevronDown, ChevronLeft,
   ChevronRight, ChevronsUpDown, CircleDollarSign, Clapperboard, Clock3,
@@ -27,6 +27,10 @@ type MoviePage = { page: number; size: number; totalElements: number; totalPages
 type JobResponse = { jobId: string; status: OscarJob['status']; result?: { updatedCount?: number; errorMessage?: string } };
 type ApiErrorBody = { message?: string; details?: Array<{ field: string; message: string }> };
 
+class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 const api = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(path, {
     ...init,
@@ -37,7 +41,7 @@ const api = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
   if (!response.ok) {
     const error = (body ?? {}) as ApiErrorBody;
     const details = error.details?.map((item) => `${item.field}: ${item.message}`).join('; ');
-    throw new Error([error.message || `HTTP ${response.status}`, details].filter(Boolean).join(' — '));
+    throw new ApiRequestError([error.message || `HTTP ${response.status}`, details].filter(Boolean).join(' — '), response.status);
   }
   return body as T;
 };
@@ -83,6 +87,11 @@ const activeFilterCount = (filters: Filters) => Object.values(filters).filter((v
 const statusText = { PENDING: 'В очереди', RUNNING: 'Выполняется', COMPLETED: 'Готово', FAILED: 'Ошибка' } as const;
 
 function App() {
+  const pollingActive = useRef(true);
+  useEffect(() => {
+    pollingActive.current = true;
+    return () => { pollingActive.current = false; };
+  }, []);
   const [activeTab, setActiveTab] = useState<'movies' | 'operations'>('movies');
   const [movies, setMovies] = useState<Movie[]>([]);
   const [jobs, setJobs] = useState<OscarJob[]>([]);
@@ -171,10 +180,21 @@ function App() {
   };
 
   const pollJob = async (job: OscarJob) => {
+    let failures = 0;
     try {
-      for (let attempt = 0; attempt < 120; attempt += 1) {
-        if (attempt) await new Promise((resolve) => window.setTimeout(resolve, 1000));
-        const response = await api<JobResponse>(`/oscar/jobs/${job.id}/status`);
+      while (pollingActive.current) {
+        let response: JobResponse;
+        try {
+          response = await api<JobResponse>(`/oscar/jobs/${job.id}/status`);
+          failures = 0;
+        } catch (error) {
+          if (error instanceof ApiRequestError && error.status < 500 && error.status !== 408 && error.status !== 429) throw error;
+          if (!failures) setToast({ kind: 'info', title: 'Статус временно недоступен', message: 'Проверка продолжится автоматически. Джоба сохраняется на сервере.' });
+          failures += 1;
+          await new Promise((resolve) => window.setTimeout(resolve, Math.min(30_000, 1000 * 2 ** Math.min(failures, 5))));
+          continue;
+        }
+        if (!pollingActive.current) return;
         updateJob(job.id, response);
         if (response.status === 'COMPLETED' || response.status === 'FAILED') {
           setToast(response.status === 'COMPLETED'
@@ -183,8 +203,8 @@ function App() {
           await Promise.all([loadMovies(), loadAverage()]);
           return;
         }
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
       }
-      throw new Error('Истекло время ожидания результата операции');
     } catch (error) {
       showError('Не удалось проверить джобу', error);
     }

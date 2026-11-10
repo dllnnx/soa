@@ -3,6 +3,7 @@
     <deployment>
         <exclude-subsystems>
             <subsystem name="logging"/>
+            <subsystem name="jpa"/>
         </exclude-subsystems>
     </deployment>
 </jboss-deployment-structure>

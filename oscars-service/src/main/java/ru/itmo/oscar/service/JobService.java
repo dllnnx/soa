@@ -1,63 +1,31 @@
 package ru.itmo.oscar.service;
 
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.LongSupplier;
-
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
-
 import ru.itmo.oscar.model.JobAccepted;
 import ru.itmo.oscar.model.JobStatus;
+import ru.itmo.oscar.model.JobType;
+import ru.itmo.oscar.model.MovieGenre;
+import ru.itmo.oscar.repository.JobRepository;
 
 @Service
 public class JobService {
+    private final JobRepository jobs;
 
-    private final ConcurrentMap<UUID, JobStatus> jobs = new ConcurrentHashMap<>();
-    private final ReentrantLock operationLock = new ReentrantLock();
-    private final ThreadPoolTaskExecutor executor;
-
-    public JobService(ThreadPoolTaskExecutor jobExecutor) {
-        this.executor = jobExecutor;
+    public JobService(JobRepository jobs) {
+        this.jobs = jobs;
     }
 
-    public JobAccepted submit(LongSupplier operation) {
-        var jobId = UUID.randomUUID();
-        jobs.put(jobId, JobStatus.pending(jobId));
-        try {
-            executor.execute(() -> run(jobId, operation));
-        } catch (RuntimeException exception) {
-            jobs.computeIfPresent(jobId, (id, status) -> status.failed(errorMessage(exception)));
+    public JobAccepted submit(JobType type, MovieGenre genre) {
+        if (type == null || (type == JobType.REWARD_R && genre != null) || (type == JobType.RESET_BY_GENRE && genre == null)) {
+            throw new InvalidParameterException("Неверные аргументы операции");
         }
-        return new JobAccepted(jobId, "/oscar/jobs/" + jobId + "/status");
+        var id = jobs.create(type, genre == null ? Map.of() : Map.of("genre", genre.name()));
+        return new JobAccepted(id, "/oscar/jobs/" + id + "/status");
     }
 
-    public JobStatus get(UUID jobId) {
-        var status = jobs.get(jobId);
-        if (status == null) {
-            throw new JobNotFoundException(jobId);
-        }
-        return status;
-    }
-
-    private void run(UUID jobId, LongSupplier operation) {
-        operationLock.lock();
-        try {
-            jobs.computeIfPresent(jobId, (id, status) -> status.running());
-            var updatedCount = operation.getAsLong();
-            jobs.computeIfPresent(jobId, (id, status) -> status.completed(updatedCount));
-        } catch (Exception exception) {
-            jobs.computeIfPresent(jobId, (id, status) -> status.failed(errorMessage(exception)));
-        } finally {
-            operationLock.unlock();
-        }
-    }
-
-    private String errorMessage(Exception exception) {
-        return exception.getMessage() == null || exception.getMessage().isBlank()
-                ? exception.getClass().getSimpleName()
-                : exception.getMessage();
+    public JobStatus get(UUID id) {
+        return jobs.find(id).orElseThrow(() -> new JobNotFoundException(id));
     }
 }

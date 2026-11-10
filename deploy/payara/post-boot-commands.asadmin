@@ -7,4 +7,7 @@ set configs.config.server-config.network-config.protocols.protocol.http-listener
 create-jdbc-connection-pool --datasourceclassname=org.postgresql.ds.PGSimpleDataSource --restype=javax.sql.DataSource --property="serverName=postgres:portNumber=5432:databaseName=movies:user=movies:password=movies" MoviesPool
 create-jdbc-resource --connectionpoolid=MoviesPool jdbc/MoviesDS
 
+create-jdbc-connection-pool --nontransactionalconnections=true --datasourceclassname=org.postgresql.ds.PGSimpleDataSource --restype=javax.sql.DataSource --property="serverName=postgres:portNumber=5432:databaseName=movies:user=movies:password=movies" MoviesOperationsPool
+create-jdbc-resource --connectionpoolid=MoviesOperationsPool jdbc/MoviesOperationsDS
+
 deploy --force=true --contextroot=/ --name=movies /opt/payara/movies.war

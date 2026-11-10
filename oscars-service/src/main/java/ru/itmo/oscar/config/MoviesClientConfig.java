@@ -16,6 +16,7 @@ public class MoviesClientConfig {
     public RestClient moviesRestClient(
             RestClient.Builder builder,
             @Value("${movies.base-url}") String baseUrl,
+            @Value("${movies.internal-token}") String internalToken,
             @Value("${movies.connect-timeout}") Duration connectTimeout,
             @Value("${movies.read-timeout}") Duration readTimeout) {
         var httpClient = HttpClient.newBuilder()
@@ -25,6 +26,7 @@ public class MoviesClientConfig {
         requestFactory.setReadTimeout(readTimeout);
         return builder
                 .baseUrl(baseUrl)
+                .defaultHeader("X-Internal-Token", internalToken)
                 .requestFactory(requestFactory)
                 .build();
     }

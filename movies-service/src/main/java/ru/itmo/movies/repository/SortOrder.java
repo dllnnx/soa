@@ -15,15 +15,15 @@ public record SortOrder(SortKey key, boolean ascending) {
             .collect(Collectors.joining("|"));
     private static final Pattern SORT = Pattern.compile("^(?<field>" + FIELDS + ")(?<direction>,(asc|desc))?$");
 
-    public static SortOrder parse(String raw) {
-        var matcher = SORT.matcher(raw);
-        if (matcher.matches()) {
-            SortKey key = SortKey.valueOf(matcher.group("field").toUpperCase(Locale.ROOT).replace('-', '_'));
-            String direction = matcher.group("direction");
-            boolean ascending = direction == null || !"desc".equals(direction.substring(1));
-            return new SortOrder(key, ascending);
+    public static SortOrder parse(String value) {
+        var matcher = SORT.matcher(value == null ? "" : value);
+        if (!matcher.matches()) {
+            throw new ApiException(ErrorCode.INVALID_SORT_EXPRESSION,
+                    "Сортировка должна иметь формат поле[,asc|desc]. " +
+                            "Допустимые поля: " + FIELDS.replace("|", ", "));
         }
-        throw new ApiException(ErrorCode.INVALID_SORT_EXPRESSION,
-                "Параметр \"sort\" должен иметь вид \"поле[,asc|desc]\"");
+        var key = SortKey.valueOf(matcher.group("field").toUpperCase(Locale.ROOT)
+                .replace('-', '_'));
+        return new SortOrder(key, !",desc".equals(matcher.group("direction")));
     }
 }
