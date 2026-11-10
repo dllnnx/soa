@@ -10,11 +10,18 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+import ru.itmo.movies.model.Country;
+import ru.itmo.movies.model.EyeColor;
+import ru.itmo.movies.model.HairColor;
+import ru.itmo.movies.model.MovieGenre;
+import ru.itmo.movies.model.MpaaRating;
 
 @Entity
 @Table(name = "movie")
-@Data
+@Getter
+@Setter
 public class MovieEntity {
 
     @Id
@@ -39,10 +46,10 @@ public class MovieEntity {
     private Integer budget;
 
     @Column(nullable = false)
-    private String genre;
+    private MovieGenre genre;
 
     @Column(name = "mpaa_rating", nullable = false)
-    private String mpaaRating;
+    private MpaaRating mpaaRating;
 
     @Column(name = "sw_name")
     private String screenwriterName;
@@ -51,13 +58,13 @@ public class MovieEntity {
     private Double screenwriterHeight;
 
     @Column(name = "sw_eye_color")
-    private String screenwriterEyeColor;
+    private EyeColor screenwriterEyeColor;
 
     @Column(name = "sw_hair_color")
-    private String screenwriterHairColor;
+    private HairColor screenwriterHairColor;
 
     @Column(name = "sw_nationality")
-    private String screenwriterNationality;
+    private Country screenwriterNationality;
 
     @Column(name = "sw_loc_x")
     private Float screenwriterLocationX;

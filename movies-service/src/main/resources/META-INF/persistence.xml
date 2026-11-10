@@ -6,6 +6,11 @@
     <persistence-unit name="moviesPU" transaction-type="JTA">
         <jta-data-source>jdbc/MoviesDS</jta-data-source>
         <class>ru.itmo.movies.repository.MovieEntity</class>
+        <class>ru.itmo.movies.repository.converter.CountryConverter</class>
+        <class>ru.itmo.movies.repository.converter.EyeColorConverter</class>
+        <class>ru.itmo.movies.repository.converter.HairColorConverter</class>
+        <class>ru.itmo.movies.repository.converter.MovieGenreConverter</class>
+        <class>ru.itmo.movies.repository.converter.MpaaRatingConverter</class>
         <exclude-unlisted-classes>true</exclude-unlisted-classes>
         <shared-cache-mode>NONE</shared-cache-mode>
         <properties>

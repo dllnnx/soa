@@ -20,7 +20,6 @@ import jakarta.persistence.criteria.Root;
 
 import ru.itmo.movies.model.CoordinatesFilter;
 import ru.itmo.movies.model.MovieFilter;
-import ru.itmo.movies.model.MovieGenre;
 import ru.itmo.movies.model.MpaaRating;
 import ru.itmo.movies.model.PersonFilter;
 
@@ -88,7 +87,7 @@ public class MovieRepository {
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaDelete<MovieEntity> criteria = builder.createCriteriaDelete(MovieEntity.class);
         Root<MovieEntity> root = criteria.from(MovieEntity.class);
-        criteria.where(builder.equal(root.get("mpaaRating"), rating.name()));
+        criteria.where(builder.equal(root.get("mpaaRating"), rating));
         return entityManager.createQuery(criteria).executeUpdate();
     }
 
@@ -136,11 +135,10 @@ public class MovieRepository {
                 filter.getOscarsCountFrom(), filter.getOscarsCountTo(), predicates);
         range(builder, root.get("budget"), filter.getBudgetFrom(), filter.getBudgetTo(), predicates);
         if (filter.getGenres() != null && !filter.getGenres().isEmpty()) {
-            predicates.add(root.<String>get("genre")
-                    .in(filter.getGenres().stream().map(MovieGenre::name).toList()));
+            predicates.add(root.get("genre").in(filter.getGenres()));
         }
         if (filter.getMpaaRating() != null) {
-            predicates.add(builder.equal(root.get("mpaaRating"), filter.getMpaaRating().name()));
+            predicates.add(builder.equal(root.get("mpaaRating"), filter.getMpaaRating()));
         }
 
         PersonFilter screenwriter = filter.getScreenwriter();
@@ -184,7 +182,7 @@ public class MovieRepository {
     private void equalEnum(CriteriaBuilder builder, Root<MovieEntity> root, String attribute,
                            Enum<?> value, List<Predicate> predicates) {
         if (value != null) {
-            predicates.add(builder.equal(root.get(attribute), value.name()));
+            predicates.add(builder.equal(root.get(attribute), value));
         }
     }
 

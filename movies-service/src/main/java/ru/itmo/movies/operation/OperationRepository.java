@@ -19,6 +19,12 @@ public class OperationRepository {
     private static final Logger LOG = Logger.getLogger(OperationRepository.class.getName());
     private static final long OPERATIONS_LOCK = 1936681575L;
 
+    private static final String SQLSTATE_QUERY_CANCELED = "57014";
+    private static final String SQLSTATE_LOCK_NOT_AVAILABLE = "55P03";
+    private static final String SQLSTATE_DEADLOCK_DETECTED = "40P01";
+    private static final String SQLSTATE_SERIALIZATION_FAILURE = "40001";
+    private static final String SQLSTATE_NUMERIC_VALUE_OUT_OF_RANGE = "22003";
+
     private static final String REWARD_QUERY = """
             UPDATE movie
             SET oscars_count = oscars_count + 1
@@ -49,6 +55,9 @@ public class OperationRepository {
         this.maxAttempts = maxAttempts;
     }
 
+    private record RegisteredState(OperationResult outcome, int attempts) {
+    }
+
     public OperationResult execute(OperationCommand command) {
         register(command);
         try (var connection = source.getConnection()) {
@@ -56,78 +65,20 @@ public class OperationRepository {
             try {
                 long deadline = System.nanoTime() + timeout.toNanos();
                 configureTimeout(connection, timeout.toMillis());
-                OperationResult previous;
-                int attempts;
-                try (var statement = connection.prepareStatement("SELECT * FROM movie_operation WHERE job_id = ? FOR UPDATE")) {
-                    statement.setObject(1, command.jobId());
-                    try (var row = statement.executeQuery()) {
-                        if (!row.next()) throw new SQLException("Registered operation is missing");
-                        if (!command.type().name().equals(row.getString("type")) || !Objects.equals(command.genre(), row.getString("genre"))) {
-                            throw new ApiException(ErrorCode.OPERATION_CONFLICT, "Этот jobId уже использован с другой командой");
-                        }
-                        previous = result(row);
-                        attempts = row.getInt("attempts");
-                    }
-                }
-                if (previous.status != OperationStatus.PENDING) {
+
+                var state = readRegisteredState(connection, command);
+                if (state.outcome().status != OperationStatus.PENDING) {
                     connection.commit();
-                    return previous;
+                    return state.outcome();
                 }
-                remainingTimeout(connection, deadline);
-                try (var statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
-                    statement.setLong(1, OPERATIONS_LOCK);
-                    statement.execute();
-                }
-                var savepoint = connection.setSavepoint();
-                OperationResult outcome;
-                try {
-                    remainingTimeout(connection, deadline);
-                    long count;
-                    try (var statement = connection.prepareStatement(command.type() == OperationCommand.Type.REWARD_R ? REWARD_QUERY : RESET_QUERY)) {
-                        if (command.type() == OperationCommand.Type.RESET_BY_GENRE)
-                            statement.setString(1, command.genre());
-                        count = statement.executeLargeUpdate();
-                    }
-                    outcome = new OperationResult(command.jobId(), OperationStatus.COMPLETED, count, null, null, false);
-                } catch (SQLException exception) {
-                    connection.rollback(savepoint);
-                    if (transientFailure(exception)) {
-                        boolean exhausted = attempts + 1 >= maxAttempts;
-                        outcome = new OperationResult(command.jobId(), exhausted ? OperationStatus.FAILED : OperationStatus.PENDING, null,
-                                exhausted ? "RETRIES_EXHAUSTED" : "TEMPORARY_DATABASE_ERROR",
-                                exhausted ? "Исчерпаны " + maxAttempts + " попыток выполнения; фильмы не изменены"
-                                        : "Временная ошибка или превышен лимит выполнения попытки", !exhausted);
-                    } else if ("22003".equals(exception.getSQLState())) {
-                        outcome = new OperationResult(command.jobId(), OperationStatus.FAILED, null, "NUMERIC_OVERFLOW",
-                                "Начисление Оскаров привело бы к переполнению long; фильмы не изменены", false);
-                    } else {
-                        throw exception;
-                    }
-                }
-                configureTimeout(connection, 1000);
-                try (var statement = connection.prepareStatement("""
-                        UPDATE movie_operation SET attempts = attempts + 1, status = ?,
-                          updated_count = ?, error_code = ?, error_message = ?, updated_at = now()
-                        WHERE job_id = ? RETURNING *
-                        """)) {
-                    statement.setString(1, outcome.status.name());
-                    statement.setObject(2, outcome.updatedCount);
-                    statement.setString(3, outcome.errorCode);
-                    statement.setString(4, outcome.errorMessage);
-                    statement.setObject(5, command.jobId());
-                    try (var row = statement.executeQuery()) {
-                        row.next();
-                        outcome = result(row);
-                    }
-                }
+
+                acquireOperationsLock(connection, deadline);
+                var outcome = applyWithSavepoint(connection, command, state.attempts(), deadline);
+                outcome = persistOutcome(connection, command.jobId(), outcome);
                 connection.commit();
                 return outcome;
             } catch (SQLException | RuntimeException exception) {
-                try {
-                    connection.rollback();
-                } catch (SQLException rollback) {
-                    exception.addSuppressed(rollback);
-                }
+                rollback(connection, exception);
                 throw exception;
             }
         } catch (SQLException exception) {
@@ -151,16 +102,87 @@ public class OperationRepository {
                 }
                 connection.commit();
             } catch (SQLException exception) {
-                try {
-                    connection.rollback();
-                } catch (SQLException rollback) {
-                    exception.addSuppressed(rollback);
-                }
+                rollback(connection, exception);
                 throw exception;
             }
         } catch (SQLException exception) {
             LOG.log(Level.WARNING, "Cannot register operation " + command.jobId(), exception);
             throw unavailable();
+        }
+    }
+
+    private RegisteredState readRegisteredState(Connection connection, OperationCommand command) throws SQLException {
+        try (var statement = connection.prepareStatement("SELECT * FROM movie_operation WHERE job_id = ? FOR UPDATE")) {
+            statement.setObject(1, command.jobId());
+            try (var row = statement.executeQuery()) {
+                if (!row.next()) throw new SQLException("Registered operation is missing");
+                if (!command.type().name().equals(row.getString("type")) || !Objects.equals(command.genre(), row.getString("genre"))) {
+                    throw new ApiException(ErrorCode.OPERATION_CONFLICT, "Этот jobId уже использован с другой командой");
+                }
+                return new RegisteredState(result(row), row.getInt("attempts"));
+            }
+        }
+    }
+
+    private void acquireOperationsLock(Connection connection, long deadline) throws SQLException {
+        remainingTimeout(connection, deadline);
+        try (var statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+            statement.setLong(1, OPERATIONS_LOCK);
+            statement.execute();
+        }
+    }
+
+    private OperationResult applyWithSavepoint(Connection connection, OperationCommand command, int attempts, long deadline)
+            throws SQLException {
+        var savepoint = connection.setSavepoint();
+        try {
+            remainingTimeout(connection, deadline);
+            long count;
+            try (var statement = connection.prepareStatement(command.type() == OperationCommand.Type.REWARD_R ? REWARD_QUERY : RESET_QUERY)) {
+                if (command.type() == OperationCommand.Type.RESET_BY_GENRE)
+                    statement.setString(1, command.genre());
+                count = statement.executeLargeUpdate();
+            }
+            return new OperationResult(command.jobId(), OperationStatus.COMPLETED, count, null, null, false);
+        } catch (SQLException exception) {
+            connection.rollback(savepoint);
+            return onUpdateFailure(command, exception, attempts);
+        }
+    }
+
+    private OperationResult onUpdateFailure(OperationCommand command, SQLException exception, int attempts)
+            throws SQLException {
+        if (transientFailure(exception)) {
+            boolean exhausted = attempts + 1 >= maxAttempts;
+            return new OperationResult(command.jobId(), exhausted ? OperationStatus.FAILED : OperationStatus.PENDING, null,
+                    exhausted ? "RETRIES_EXHAUSTED" : "TEMPORARY_DATABASE_ERROR",
+                    exhausted ? "Исчерпаны " + maxAttempts + " попыток выполнения; фильмы не изменены"
+                            : "Временная ошибка или превышен лимит выполнения попытки", !exhausted);
+        }
+        if (SQLSTATE_NUMERIC_VALUE_OUT_OF_RANGE.equals(exception.getSQLState())) {
+            return new OperationResult(command.jobId(), OperationStatus.FAILED, null, "NUMERIC_OVERFLOW",
+                    "Начисление Оскаров привело бы к переполнению long; фильмы не изменены", false);
+        }
+        throw exception;
+    }
+
+    private OperationResult persistOutcome(Connection connection, java.util.UUID jobId, OperationResult outcome)
+            throws SQLException {
+        configureTimeout(connection, 1000);
+        try (var statement = connection.prepareStatement("""
+                UPDATE movie_operation SET attempts = attempts + 1, status = ?,
+                  updated_count = ?, error_code = ?, error_message = ?, updated_at = now()
+                WHERE job_id = ? RETURNING *
+                """)) {
+            statement.setString(1, outcome.status.name());
+            statement.setObject(2, outcome.updatedCount);
+            statement.setString(3, outcome.errorCode);
+            statement.setString(4, outcome.errorMessage);
+            statement.setObject(5, jobId);
+            try (var row = statement.executeQuery()) {
+                row.next();
+                return result(row);
+            }
         }
     }
 
@@ -170,9 +192,17 @@ public class OperationRepository {
                 row.getObject("updated_count", Long.class), row.getString("error_code"), row.getString("error_message"), status == OperationStatus.PENDING);
     }
 
+    private static void rollback(Connection connection, Exception exception) {
+        try {
+            connection.rollback();
+        } catch (SQLException rollbackFailure) {
+            exception.addSuppressed(rollbackFailure);
+        }
+    }
+
     private static void remainingTimeout(Connection connection, long deadline) throws SQLException {
         long remainingMillis = (deadline - System.nanoTime()) / 1_000_000;
-        if (remainingMillis <= 0) throw new SQLException("Operation deadline exceeded", "57014");
+        if (remainingMillis <= 0) throw new SQLException("Operation deadline exceeded", SQLSTATE_QUERY_CANCELED);
         configureTimeout(connection, remainingMillis);
     }
 
@@ -186,7 +216,7 @@ public class OperationRepository {
 
     private static boolean transientFailure(SQLException exception) {
         return switch (exception.getSQLState() == null ? "" : exception.getSQLState()) {
-            case "57014", "55P03", "40P01", "40001" -> true;
+            case SQLSTATE_QUERY_CANCELED, SQLSTATE_LOCK_NOT_AVAILABLE, SQLSTATE_DEADLOCK_DETECTED, SQLSTATE_SERIALIZATION_FAILURE -> true;
             default -> false;
         };
     }
