@@ -53,7 +53,7 @@ services:
       JVM_ARGS: "-Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8181:8181"
-      - "127.0.0.1:4848:4848"
+      - "4848:4848"
     volumes:
       - ./certs/out/keystore.jks:/run/secrets/payara.jks:ro
     depends_on:
@@ -75,6 +75,8 @@ services:
       JBOSS_JAVA_SIZING: "-Xms64m -Xmx256m -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8443:8443"
+      - "9990:9990"
+    command: ["-b", "0.0.0.0", "-bmanagement", "0.0.0.0"]
     volumes:
       - ./certs/out/wildfly.p12:/run/secrets/wildfly.p12:ro
     depends_on:
