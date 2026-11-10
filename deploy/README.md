@@ -5,9 +5,11 @@
 | Контейнер | Образ | Порт | Назначение |
 |---|---|---|---|
 | `postgres` | postgres:16-alpine | — | БД `movies` (schema — `postgres/init.sql`) |
+| `movies-migrate` | postgres:16-alpine | — | Однократное применение миграции журнала идемпотентности в Movies |
+| `oscars-postgres` | postgres:16-alpine | — | Отдельная БД очереди и результатов джоб, volume `oscars-pgdata` |
 | `payara` | payara/server-full:6.2024.12 | 8181 (HTTPS) | movies-service (JAX-RS), context root `/` |
 | `wildfly` | quay.io/wildfly/wildfly:32.0.1.Final | 8443 (HTTPS) | oscars-service (Spring Boot WAR), context root `/oscar` |
-| `frontend` | nginx:1.27-alpine | 3000 (HTTP) | SPA + reverse-proxy `/movies` → payara, `/oscar` → wildfly |
+| `frontend` | nginx:1.27-alpine | 3000 (HTTPS) | SPA + reverse-proxy `/movies` → payara, `/oscar` → wildfly |
 
 Оба сервиса — **только HTTPS** с сертификатами собственного мини-CA
 (`deploy/certs/out/`): у каждого сервиса свой сертификат, подписанный общим корнем
@@ -28,12 +30,16 @@ docker compose -f deploy/docker-compose.yml up --build -d
 
 Payara поднимается 1–2 минуты (деплой WAR идёт последним asadmin-шагом, после создания JDBC-пула).
 
+`movies-migrate` применяет `postgres/migrations/V002__movie_operations.sql` и к существующему volume с фильмами. Payara ждёт успешного завершения миграции. База очереди Oscars создаётся в отдельном контейнере, таблица и индекс — при старте приложения. Удалять старые volumes для обновления не нужно.
+
+Внутреннее API `/internal/operations` требует заголовок `X-Internal-Token`. Переменная `MOVIES_INTERNAL_TOKEN` задаёт одинаковый токен в Payara и WildFly (локальное значение по умолчанию — `soa-local-internal-token`). nginx не проксирует этот API. Настройки попыток, транзакции и восстановление описаны в `../oscars-service/README.md`; контракт — в `../internalApi.yaml`.
+
 Проверка:
 
 ```bash
 curl --cacert deploy/certs/out/ca.crt https://localhost:8181/movies/average-budget
 curl --cacert deploy/certs/out/ca.crt https://localhost:8443/oscar/jobs/<uuid>/status
-open http://localhost:3000    # SPA; API ходит через nginx с проверкой сертификатов
+open https://localhost:3000    # SPA; API ходит через nginx с проверкой сертификатов
 ```
 
 Без `--cacert` curl (как и браузер) ругнётся на неизвестный корень — это ожидаемо.

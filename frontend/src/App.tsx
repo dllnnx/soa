@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle, ArrowDown, ArrowUp, Award, Check, ChevronDown, ChevronLeft,
   ChevronRight, ChevronsUpDown, CircleDollarSign, Clapperboard, Clock3,
@@ -6,6 +6,7 @@ import {
   RefreshCw, RotateCcw, Search, SlidersHorizontal, Trash2, X,
 } from 'lucide-react';
 import type { Filters, Genre, Movie, MovieDraft, OscarJob, Person } from './types';
+import { IDS_MAX_LENGTH, NUMBER_MAX_LENGTH, TEXT_MAX_LENGTH, numberRules, validateFilters, validateMovieDraft } from './validation';
 import {
   COUNTRIES, EYE_COLORS, emptyDraft, emptyFilters, formatDate, formatMoney, GENRES,
   genreLabels, HAIR_COLORS, MPAA, countryLabels, colorLabels, draftFromMovie,
@@ -26,6 +27,10 @@ type MoviePage = { page: number; size: number; totalElements: number; totalPages
 type JobResponse = { jobId: string; status: OscarJob['status']; result?: { updatedCount?: number; errorMessage?: string } };
 type ApiErrorBody = { message?: string; details?: Array<{ field: string; message: string }> };
 
+class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 const api = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(path, {
     ...init,
@@ -36,7 +41,7 @@ const api = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
   if (!response.ok) {
     const error = (body ?? {}) as ApiErrorBody;
     const details = error.details?.map((item) => `${item.field}: ${item.message}`).join('; ');
-    throw new Error([error.message || `HTTP ${response.status}`, details].filter(Boolean).join(' — '));
+    throw new ApiRequestError([error.message || `HTTP ${response.status}`, details].filter(Boolean).join(' — '), response.status);
   }
   return body as T;
 };
@@ -47,6 +52,8 @@ const compactObject = (value: Record<string, unknown>) => Object.fromEntries(
 );
 
 const toMovieFilter = (filters: Filters) => {
+  const errors = validateFilters(filters);
+  if (Object.keys(errors).length) throw new Error(Object.values(errors).join('; '));
   const coordinates = compactObject({
     xFrom: present(filters.coordinateXFrom), xTo: present(filters.coordinateXTo),
     yFrom: present(filters.coordinateYFrom), yTo: present(filters.coordinateYTo),
@@ -80,6 +87,11 @@ const activeFilterCount = (filters: Filters) => Object.values(filters).filter((v
 const statusText = { PENDING: 'В очереди', RUNNING: 'Выполняется', COMPLETED: 'Готово', FAILED: 'Ошибка' } as const;
 
 function App() {
+  const pollingActive = useRef(true);
+  useEffect(() => {
+    pollingActive.current = true;
+    return () => { pollingActive.current = false; };
+  }, []);
   const [activeTab, setActiveTab] = useState<'movies' | 'operations'>('movies');
   const [movies, setMovies] = useState<Movie[]>([]);
   const [jobs, setJobs] = useState<OscarJob[]>([]);
@@ -103,7 +115,7 @@ function App() {
   const [resetGenre, setResetGenre] = useState<Genre | ''>('');
 
   const totalPages = Math.max(1, serverTotalPages);
-  const totalOscars = movies.reduce((sum, item) => sum + item.oscarsCount, 0);
+  const totalOscars = movies.reduce((sum, item) => sum + BigInt(item.oscarsCount), 0n);
   const currentJob = jobs.find((job) => job.status === 'PENDING' || job.status === 'RUNNING');
   const writers = useMemo(() => Array.from(new Map(movies.flatMap((item) => item.screenwriter ? [[item.screenwriter.name, item.screenwriter] as const] : [])).values()), [movies]);
   const writerTarget = deleteWriter || writers[0]?.name || '';
@@ -170,10 +182,21 @@ function App() {
   };
 
   const pollJob = async (job: OscarJob) => {
+    let failures = 0;
     try {
-      for (let attempt = 0; attempt < 120; attempt += 1) {
-        if (attempt) await new Promise((resolve) => window.setTimeout(resolve, 1000));
-        const response = await api<JobResponse>(`/oscar/jobs/${job.id}/status`);
+      while (pollingActive.current) {
+        let response: JobResponse;
+        try {
+          response = await api<JobResponse>(`/oscar/jobs/${job.id}/status`);
+          failures = 0;
+        } catch (error) {
+          if (error instanceof ApiRequestError && error.status < 500 && error.status !== 408 && error.status !== 429) throw error;
+          if (!failures) setToast({ kind: 'info', title: 'Статус временно недоступен', message: 'Проверка продолжится автоматически. Джоба сохраняется на сервере.' });
+          failures += 1;
+          await new Promise((resolve) => window.setTimeout(resolve, Math.min(30_000, 1000 * 2 ** Math.min(failures, 5))));
+          continue;
+        }
+        if (!pollingActive.current) return;
         updateJob(job.id, response);
         if (response.status === 'COMPLETED' || response.status === 'FAILED') {
           setToast(response.status === 'COMPLETED'
@@ -182,8 +205,8 @@ function App() {
           await Promise.all([loadMovies(), loadAverage()]);
           return;
         }
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
       }
-      throw new Error('Истекло время ожидания результата операции');
     } catch (error) {
       showError('Не удалось проверить джобу', error);
     }
@@ -329,7 +352,7 @@ function App() {
 
             <section className="table-card">
               <div className="table-toolbar">
-                <div className="search-box"><Search size={18} /><input value={filters.name} onChange={(event) => applyQuickSearch(event.target.value)} placeholder="Название фильма…" /></div>
+                <div className="search-box"><Search size={18} /><input maxLength={TEXT_MAX_LENGTH} value={filters.name} onChange={(event) => applyQuickSearch(event.target.value)} placeholder="Название фильма…" /></div>
                 <div className="toolbar-group">
                   <button className={`button filter-button ${activeFilterCount(filters) ? 'has-filters' : ''}`} onClick={() => { setDraftFilters(filters); setFiltersOpen(true); }}>
                     <Filter size={17} /> Фильтры {activeFilterCount(filters) > 0 && <span>{activeFilterCount(filters)}</span>}
@@ -350,6 +373,7 @@ function App() {
 
               <div className="table-scroll">
                 <table>
+                  <colgroup><col style={{ width: 42 }} /><col style={{ width: 90 }} /><col style={{ width: 220 }} /><col style={{ width: 200 }} /><col style={{ width: 165 }} /><col style={{ width: 160 }} /><col style={{ width: 70 }} /><col style={{ width: 125 }} /><col style={{ width: 60 }} /></colgroup>
                   <thead><tr>
                     <th className="expander-cell" />
                     <SortableTh label="ID" field="id" current={sortField} direction={sortDirection} onSort={handleSort} />
@@ -386,7 +410,7 @@ function App() {
 }
 
 function Metric({ icon, label, value, note, tone, loading }: { icon: React.ReactNode; label: string; value: string; note: string; tone: string; loading?: boolean }) {
-  return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><small>{label}</small><b>{value}</b><p>{loading && <LoaderCircle className="spin" size={13} />}{note}</p></div></article>;
+  return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><small>{label}</small><b title={value}>{value}</b><p>{loading && <LoaderCircle className="spin" size={13} />}{note}</p></div></article>;
 }
 
 function SortableTh({ label, field, current, direction, onSort }: { label: string; field: string; current: string; direction: SortDirection; onSort: (field: string) => void }) {
@@ -400,10 +424,10 @@ function MovieRows({ item, expanded, onToggle, onEdit, onDelete }: { item: Movie
     <tr className={`movie-row ${expanded ? 'expanded' : ''}`} onClick={onToggle}>
       <td className="expander-cell"><button className="row-expand" aria-label={expanded ? 'Свернуть' : 'Раскрыть'}><ChevronDown size={17} /></button></td>
       <td><span className="mono id-value">#{item.id}</span></td>
-      <td><div className="movie-name"><span className={`genre-dot genre-${item.genre.toLowerCase()}`} /><div><b>{item.name}</b><small>{genreLabels[item.genre]}</small></div></div></td>
-      <td>{item.screenwriter ? <div className="writer-cell"><span>{initials(item.screenwriter.name)}</span><div><b>{item.screenwriter.name}</b><small>{countryLabels[item.screenwriter.nationality]}</small></div></div> : <span className="muted">Не указан</span>}</td>
-      <td className="tabular">{formatMoney(item.budget)}</td>
-      <td><span className={`oscar-count ${item.oscarsCount ? 'awarded' : ''}`}><Award size={15} /> {item.oscarsCount}</span></td>
+      <td><div className="movie-name"><span className={`genre-dot genre-${item.genre.toLowerCase()}`} /><div><b title={item.name}>{item.name}</b><small>{genreLabels[item.genre]}</small></div></div></td>
+      <td>{item.screenwriter ? <div className="writer-cell"><span>{initials(item.screenwriter.name)}</span><div><b title={item.screenwriter.name}>{item.screenwriter.name}</b><small>{countryLabels[item.screenwriter.nationality]}</small></div></div> : <span className="muted">Не указан</span>}</td>
+      <td className="tabular" title={formatMoney(item.budget)}>{formatMoney(item.budget)}</td>
+      <td><span title={String(item.oscarsCount)} className={`oscar-count ${item.oscarsCount ? 'awarded' : ''}`}><Award size={15} /> {item.oscarsCount}</span></td>
       <td><span className={`rating rating-${item.mpaaRating.toLowerCase()}`}>{item.mpaaRating.replace('_', '-')}</span></td>
       <td><span className="date-cell">{formatDate(item.creationDate)}</span></td>
       <td><button className="icon-button" aria-label="Действия" onClick={(event) => { event.stopPropagation(); onEdit(); }}><MoreHorizontal size={18} /></button></td>
@@ -472,7 +496,7 @@ function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, runJob, o
       <aside className="lookup-card">
         <h3>Проверить джобу</h3>
         <p>Введите идентификатор из ответа <code>202 Accepted</code>.</p>
-        <label>ID операции<input value={lookup} onChange={(event) => { setLookup(event.target.value); setInspection(null); }} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></label>
+        <label>ID операции<input maxLength={36} value={lookup} onChange={(event) => { setLookup(event.target.value); setInspection(null); }} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></label>
         <button className="button primary" onClick={() => void inspect()}>Проверить статус</button>
         {inspection && (
           <div className={`inspection-result ${inspection.kind === 'ok' ? inspection.response.status.toLowerCase() : inspection.kind}`}>
@@ -492,38 +516,44 @@ function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, runJob, o
 }
 
 function FiltersDrawer({ value, onChange, onClose, onApply, onReset }: { value: Filters; onChange: (value: Filters) => void; onClose: () => void; onApply: () => void; onReset: () => void }) {
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const apply = () => {
+    const next = validateFilters(value);
+    setErrors(next);
+    if (!Object.keys(next).length) onApply();
+  };
   const set = (key: keyof Filters, next: Filters[keyof Filters]) => onChange({ ...value, [key]: next });
   return <div className="overlay drawer-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside className="drawer">
     <div className="modal-heading"><div><span className="modal-icon"><SlidersHorizontal size={19} /></span><div><h2>Фильтры</h2><p>Все поля MovieFilter</p></div></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div>
     <div className="drawer-body">
       <FilterSection title="Основное">
-        <Field label="Название"><input value={value.name} onChange={(e) => set('name', e.target.value)} placeholder="Подстрока без учёта регистра" /></Field>
-        <Field label="ID через запятую"><input value={value.ids} onChange={(e) => set('ids', e.target.value)} placeholder="1042, 1038, 1029" /></Field>
+        <Field label="Название" error={errors.name}><input maxLength={TEXT_MAX_LENGTH} value={value.name} onChange={(e) => set('name', e.target.value)} placeholder="Подстрока без учёта регистра" /></Field>
+        <Field label="ID через запятую" error={errors.ids}><input maxLength={IDS_MAX_LENGTH} value={value.ids} onChange={(e) => set('ids', e.target.value)} placeholder="1042, 1038, 1029" /></Field>
         <Field label="Жанры" wide><div className="choice-grid">{GENRES.map((genre) => <label className="check-choice" key={genre}><input type="checkbox" checked={value.genres.includes(genre)} onChange={() => set('genres', value.genres.includes(genre) ? value.genres.filter((item) => item !== genre) : [...value.genres, genre])} /><span><Check size={13} /></span>{genreLabels[genre]}</label>)}</div></Field>
         <Field label="Рейтинг MPAA"><select value={value.mpaaRating} onChange={(e) => set('mpaaRating', e.target.value)}><option value="">Любой</option>{MPAA.map((item) => <option key={item} value={item}>{item.replace('_', '-')}</option>)}</select></Field>
       </FilterSection>
       <FilterSection title="Числа и даты">
-        <RangeFields label="Оскары" from={value.oscarsFrom} to={value.oscarsTo} onFrom={(v) => set('oscarsFrom', v)} onTo={(v) => set('oscarsTo', v)} />
-        <RangeFields label="Бюджет, $" from={value.budgetFrom} to={value.budgetTo} onFrom={(v) => set('budgetFrom', v)} onTo={(v) => set('budgetTo', v)} />
-        <RangeFields label="Координата X" from={value.coordinateXFrom} to={value.coordinateXTo} onFrom={(v) => set('coordinateXFrom', v)} onTo={(v) => set('coordinateXTo', v)} />
-        <RangeFields label="Координата Y" from={value.coordinateYFrom} to={value.coordinateYTo} onFrom={(v) => set('coordinateYFrom', v)} onTo={(v) => set('coordinateYTo', v)} />
-        <Field label="Создан после"><input type="datetime-local" value={value.creationAfter} onChange={(e) => set('creationAfter', e.target.value)} /></Field>
-        <Field label="Создан до"><input type="datetime-local" value={value.creationBefore} onChange={(e) => set('creationBefore', e.target.value)} /></Field>
+        <RangeFields label="Оскары" integer={true} error={errors.oscarsFrom || errors.oscarsTo} from={value.oscarsFrom} to={value.oscarsTo} onFrom={(v) => set('oscarsFrom', v)} onTo={(v) => set('oscarsTo', v)} />
+        <RangeFields label="Бюджет, $" integer={true} error={errors.budgetFrom || errors.budgetTo} from={value.budgetFrom} to={value.budgetTo} onFrom={(v) => set('budgetFrom', v)} onTo={(v) => set('budgetTo', v)} />
+        <RangeFields label="Координата X" integer={false} error={errors.coordinateXFrom || errors.coordinateXTo} from={value.coordinateXFrom} to={value.coordinateXTo} onFrom={(v) => set('coordinateXFrom', v)} onTo={(v) => set('coordinateXTo', v)} />
+        <RangeFields label="Координата Y" integer={false} error={errors.coordinateYFrom || errors.coordinateYTo} from={value.coordinateYFrom} to={value.coordinateYTo} onFrom={(v) => set('coordinateYFrom', v)} onTo={(v) => set('coordinateYTo', v)} />
+        <Field label="Создан после" error={errors.creationAfter}><input type="datetime-local" value={value.creationAfter} onChange={(e) => set('creationAfter', e.target.value)} /></Field>
+        <Field label="Создан до" error={errors.creationBefore}><input type="datetime-local" value={value.creationBefore} onChange={(e) => set('creationBefore', e.target.value)} /></Field>
       </FilterSection>
       <FilterSection title="Сценарист">
-        <Field label="Имя"><input value={value.screenwriterName} onChange={(e) => set('screenwriterName', e.target.value)} placeholder="Подстрока имени" /></Field>
-        <RangeFields label="Рост, см" from={value.heightFrom} to={value.heightTo} onFrom={(v) => set('heightFrom', v)} onTo={(v) => set('heightTo', v)} />
+        <Field label="Имя" error={errors.screenwriterName}><input maxLength={TEXT_MAX_LENGTH} value={value.screenwriterName} onChange={(e) => set('screenwriterName', e.target.value)} placeholder="Подстрока имени" /></Field>
+        <RangeFields label="Рост, см" integer={false} error={errors.heightFrom || errors.heightTo} from={value.heightFrom} to={value.heightTo} onFrom={(v) => set('heightFrom', v)} onTo={(v) => set('heightTo', v)} />
         <Field label="Цвет глаз"><select value={value.eyeColor} onChange={(e) => set('eyeColor', e.target.value)}><option value="">Любой</option>{EYE_COLORS.map((item) => <option key={item} value={item}>{colorLabels[item]}</option>)}</select></Field>
         <Field label="Цвет волос"><select value={value.hairColor} onChange={(e) => set('hairColor', e.target.value)}><option value="">Любой</option>{HAIR_COLORS.map((item) => <option key={item} value={item}>{colorLabels[item]}</option>)}</select></Field>
         <Field label="Гражданство"><select value={value.nationality} onChange={(e) => set('nationality', e.target.value)}><option value="">Любое</option>{COUNTRIES.map((item) => <option key={item} value={item}>{countryLabels[item]}</option>)}</select></Field>
       </FilterSection>
       <FilterSection title="Локация сценариста">
-        <RangeFields label="Локация X" from={value.locationXFrom} to={value.locationXTo} onFrom={(v) => set('locationXFrom', v)} onTo={(v) => set('locationXTo', v)} />
-        <RangeFields label="Локация Y" from={value.locationYFrom} to={value.locationYTo} onFrom={(v) => set('locationYFrom', v)} onTo={(v) => set('locationYTo', v)} />
-        <RangeFields label="Локация Z" from={value.locationZFrom} to={value.locationZTo} onFrom={(v) => set('locationZFrom', v)} onTo={(v) => set('locationZTo', v)} />
+        <RangeFields label="Локация X" integer={false} error={errors.locationXFrom || errors.locationXTo} from={value.locationXFrom} to={value.locationXTo} onFrom={(v) => set('locationXFrom', v)} onTo={(v) => set('locationXTo', v)} />
+        <RangeFields label="Локация Y" integer={true} error={errors.locationYFrom || errors.locationYTo} from={value.locationYFrom} to={value.locationYTo} onFrom={(v) => set('locationYFrom', v)} onTo={(v) => set('locationYTo', v)} />
+        <RangeFields label="Локация Z" integer={true} error={errors.locationZFrom || errors.locationZTo} from={value.locationZFrom} to={value.locationZTo} onFrom={(v) => set('locationZFrom', v)} onTo={(v) => set('locationZTo', v)} />
       </FilterSection>
     </div>
-    <div className="modal-footer"><button className="button secondary" onClick={onReset}><RotateCcw size={16} /> Сбросить</button><button className="button primary" onClick={onApply}>Показать результаты</button></div>
+    <div className="modal-footer"><button className="button secondary" onClick={() => { setErrors({}); onReset(); }}><RotateCcw size={16} /> Сбросить</button><button className="button primary" onClick={apply}>Показать результаты</button></div>
   </aside></div>;
 }
 
@@ -532,21 +562,7 @@ function MovieModal({ mode, movie, writers, onClose, onSave }: { mode: 'create' 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const set = <K extends keyof MovieDraft>(key: K, value: MovieDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const submit = () => {
-    const next: Record<string, string> = {};
-    if (!draft.name.trim()) next.name = 'Укажите название фильма';
-    else if (!/^[a-zA-Zа-яА-ЯЁё0-9 .,:!?()&-]+$/.test(draft.name.trim())) next.name = 'Есть недопустимые символы';
-    if (draft.coordinateX === '' || Number(draft.coordinateX) <= -130) next.coordinateX = 'Значение должно быть больше −130';
-    if (draft.coordinateY === '' || Number(draft.coordinateY) > 388) next.coordinateY = 'Значение должно быть не больше 388';
-    if (draft.oscarsCount === '' || !Number.isInteger(Number(draft.oscarsCount)) || Number(draft.oscarsCount) < 0) next.oscarsCount = 'Укажите целое число не меньше 0';
-    if (draft.budget && Number(draft.budget) < 1) next.budget = 'Бюджет должен быть больше 0';
-    if (draft.screenwriterMode === 'existing' && !draft.existingScreenwriter) next.existingScreenwriter = 'Выберите сценариста';
-    if (draft.screenwriterMode === 'new') {
-      if (!draft.screenwriterName.trim()) next.screenwriterName = 'Укажите имя';
-      if (Number(draft.screenwriterHeight) <= 0) next.screenwriterHeight = 'Рост должен быть больше 0';
-      if (draft.locationX === '') next.locationX = 'Обязательное поле';
-      if (draft.locationY === '' || !Number.isInteger(Number(draft.locationY))) next.locationY = 'Введите целое число';
-      if (draft.locationZ === '' || !Number.isInteger(Number(draft.locationZ))) next.locationZ = 'Введите целое число';
-    }
+    const next = validateMovieDraft(draft);
     setErrors(next);
     if (!Object.keys(next).length) onSave(draft, movie);
   };
@@ -554,28 +570,29 @@ function MovieModal({ mode, movie, writers, onClose, onSave }: { mode: 'create' 
     <div className="modal-heading"><div><span className="modal-icon"><Film size={19} /></span><div><h2>{mode === 'create' ? 'Новый фильм' : 'Редактировать фильм'}</h2><p>{mode === 'create' ? 'Заполните данные MovieInput' : `ID ${movie?.id} · полное обновление`}</p></div></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div>
     <div className="modal-body">
       <div className="form-section"><h3>О фильме</h3><div className="form-grid">
-        <Field label="Название *" wide error={errors.name}><input autoFocus value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="Например, Интерстеллар" /></Field>
+        <Field label="Название *" hint={`${draft.name.length}/${TEXT_MAX_LENGTH}`} wide error={errors.name}><input autoFocus maxLength={TEXT_MAX_LENGTH} value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="Например, Интерстеллар" /></Field>
         <Field label="Жанр *"><select value={draft.genre} onChange={(e) => set('genre', e.target.value as MovieDraft['genre'])}>{GENRES.map((item) => <option key={item} value={item}>{genreLabels[item]}</option>)}</select></Field>
         <Field label="Рейтинг MPAA *"><select value={draft.mpaaRating} onChange={(e) => set('mpaaRating', e.target.value as MovieDraft['mpaaRating'])}>{MPAA.map((item) => <option key={item} value={item}>{item.replace('_', '-')}</option>)}</select></Field>
-        <Field label="Оскары *" error={errors.oscarsCount}><input type="number" min="0" value={draft.oscarsCount} onChange={(e) => set('oscarsCount', e.target.value)} /></Field>
-        <Field label="Бюджет, $" hint="Можно оставить пустым" error={errors.budget}><input type="number" min="1" value={draft.budget} onChange={(e) => set('budget', e.target.value)} placeholder="165000000" /></Field>
-        <Field label="Координата X *" error={errors.coordinateX}><input type="number" step="any" value={draft.coordinateX} onChange={(e) => set('coordinateX', e.target.value)} placeholder="> −130" /></Field>
-        <Field label="Координата Y *" error={errors.coordinateY}><input type="number" step="any" value={draft.coordinateY} onChange={(e) => set('coordinateY', e.target.value)} placeholder="≤ 388" /></Field>
+        <Field label="Оскары *" error={errors.oscarsCount}><NumericInput integer={true} value={draft.oscarsCount} onChange={(e) => set('oscarsCount', e.target.value)} /></Field>
+        <Field label="Бюджет, $" hint={`До ${numberRules.budget.max}; необязательно`} error={errors.budget}><NumericInput integer={true} value={draft.budget} onChange={(e) => set('budget', e.target.value)} placeholder="165000000" /></Field>
+        <Field label="Координата X *" error={errors.coordinateX}><NumericInput integer={false} value={draft.coordinateX} onChange={(e) => set('coordinateX', e.target.value)} placeholder="> −130" /></Field>
+        <Field label="Координата Y *" error={errors.coordinateY}><NumericInput integer={false} value={draft.coordinateY} onChange={(e) => set('coordinateY', e.target.value)} placeholder="≤ 388" /></Field>
       </div></div>
       <div className="form-section"><h3>Сценарист</h3><div className="segmented"><button className={draft.screenwriterMode === 'existing' ? 'active' : ''} onClick={() => set('screenwriterMode', 'existing')}>Выбрать существующего</button><button className={draft.screenwriterMode === 'new' ? 'active' : ''} onClick={() => set('screenwriterMode', 'new')}>Создать нового</button><button className={draft.screenwriterMode === 'none' ? 'active' : ''} onClick={() => set('screenwriterMode', 'none')}>Не указывать</button></div>
         {draft.screenwriterMode === 'existing' && <div className="writer-picker">{writers.map((writer) => <button key={writer.name} className={draft.existingScreenwriter === writer.name ? 'selected' : ''} onClick={() => set('existingScreenwriter', writer.name)}><span>{initials(writer.name)}</span><div><b>{writer.name}</b><small>{countryLabels[writer.nationality]} · {writer.height} см</small></div><i><Check size={14} /></i></button>)}</div>}
+        {errors.existingScreenwriter && <div className="validation-alert" role="alert">{errors.existingScreenwriter}</div>}
         {draft.screenwriterMode === 'new' && <div className="form-grid writer-form">
-          <Field label="Имя *" wide error={errors.screenwriterName}><input value={draft.screenwriterName} onChange={(e) => set('screenwriterName', e.target.value)} /></Field>
-          <Field label="Рост, см *" error={errors.screenwriterHeight}><input type="number" value={draft.screenwriterHeight} onChange={(e) => set('screenwriterHeight', e.target.value)} /></Field>
+          <Field label="Имя *" hint={`${draft.screenwriterName.length}/${TEXT_MAX_LENGTH}`} wide error={errors.screenwriterName}><input maxLength={TEXT_MAX_LENGTH} value={draft.screenwriterName} onChange={(e) => set('screenwriterName', e.target.value)} /></Field>
+          <Field label="Рост, см *" error={errors.screenwriterHeight}><NumericInput integer={false} value={draft.screenwriterHeight} onChange={(e) => set('screenwriterHeight', e.target.value)} /></Field>
           <Field label="Цвет глаз *"><select value={draft.eyeColor} onChange={(e) => set('eyeColor', e.target.value as MovieDraft['eyeColor'])}>{EYE_COLORS.map((item) => <option key={item} value={item}>{colorLabels[item]}</option>)}</select></Field>
           <Field label="Цвет волос"><select value={draft.hairColor} onChange={(e) => set('hairColor', e.target.value as MovieDraft['hairColor'])}><option value="">Не указан</option>{HAIR_COLORS.map((item) => <option key={item} value={item}>{colorLabels[item]}</option>)}</select></Field>
           <Field label="Гражданство *"><select value={draft.nationality} onChange={(e) => set('nationality', e.target.value as MovieDraft['nationality'])}>{COUNTRIES.map((item) => <option key={item} value={item}>{countryLabels[item]}</option>)}</select></Field>
-          <Field label="Локация X *" error={errors.locationX}><input type="number" step="any" value={draft.locationX} onChange={(e) => set('locationX', e.target.value)} /></Field>
-          <Field label="Локация Y *" error={errors.locationY}><input type="number" value={draft.locationY} onChange={(e) => set('locationY', e.target.value)} /></Field>
-          <Field label="Локация Z *" error={errors.locationZ}><input type="number" value={draft.locationZ} onChange={(e) => set('locationZ', e.target.value)} /></Field>
+          <Field label="Локация X *" error={errors.locationX}><NumericInput integer={false} value={draft.locationX} onChange={(e) => set('locationX', e.target.value)} /></Field>
+          <Field label="Локация Y *" error={errors.locationY}><NumericInput integer={true} value={draft.locationY} onChange={(e) => set('locationY', e.target.value)} /></Field>
+          <Field label="Локация Z *" error={errors.locationZ}><NumericInput integer={true} value={draft.locationZ} onChange={(e) => set('locationZ', e.target.value)} /></Field>
         </div>}
       </div>
-      {Object.keys(errors).length > 0 && <div className="validation-alert"><AlertCircle size={18} /><div><b>Сервис отклонил бы эти данные</b><span>Исправьте отмеченные поля и повторите попытку.</span></div></div>}
+      {Object.keys(errors).length > 0 && <div className="validation-alert"><AlertCircle size={18} /><div><b>Проверьте введённые данные</b><span>Исправьте отмеченные поля и повторите попытку.</span></div></div>}
     </div>
     <div className="modal-footer"><button className="button secondary" onClick={onClose}>Отмена</button><button className="button primary" onClick={submit}>{mode === 'create' ? <><Plus size={17} /> Создать фильм</> : <><Check size={17} /> Сохранить изменения</>}</button></div>
   </div></div>;
@@ -595,7 +612,12 @@ function TooltipButton({ label, tooltip, className = '', disabled, onClick }: { 
 
 function FilterSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="filter-section"><h3>{title}</h3><div className="filter-grid">{children}</div></section>; }
 function Field({ label, hint, error, wide, children }: { label: string; hint?: string; error?: string; wide?: boolean; children: React.ReactNode }) { return <label className={`field ${wide ? 'wide' : ''} ${error ? 'invalid' : ''}`}><span>{label}{hint && <small>{hint}</small>}</span>{children}{error && <em>{error}</em>}</label>; }
-function RangeFields({ label, from, to, onFrom, onTo }: { label: string; from: string; to: string; onFrom: (value: string) => void; onTo: (value: string) => void }) { return <Field label={label} wide><div className="range-fields"><input type="number" value={from} onChange={(e) => onFrom(e.target.value)} placeholder="Строго больше" /><span>—</span><input type="number" value={to} onChange={(e) => onTo(e.target.value)} placeholder="Строго меньше" /></div></Field>; }
+function NumericInput({ integer, ...props }: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'maxLength' | 'inputMode'> & { integer?: boolean }) {
+  return <input {...props} type="text" inputMode={integer ? 'numeric' : 'decimal'} maxLength={NUMBER_MAX_LENGTH} autoComplete="off" spellCheck={false} />;
+}
+function RangeFields({ label, from, to, onFrom, onTo, integer, error }: { label: string; from: string; to: string; onFrom: (value: string) => void; onTo: (value: string) => void; integer?: boolean; error?: string }) {
+  return <Field label={label} wide error={error}><div className="range-fields"><NumericInput integer={integer} value={from} onChange={(e) => onFrom(e.target.value)} placeholder="Строго больше" /><span>—</span><NumericInput integer={integer} value={to} onChange={(e) => onTo(e.target.value)} placeholder="Строго меньше" /></div></Field>;
+}
 const initials = (name: string) => name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
 const compactMoney = (value: number) => `$${new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 }).format(value)}`;
 

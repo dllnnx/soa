@@ -4,6 +4,8 @@ info:
   version: 1.0.0
   description: |
     Управление Оскарами
+    Команды и результаты сохраняются в PostgreSQL и переживают перезапуск.
+    Временные ошибки повторяются с исходным jobId; RUNNING также означает ожидание повтора.
 servers:
   - url: /
     description: текущий HTTPS-шлюз
@@ -27,6 +29,8 @@ paths:
                 $ref: '#/components/schemas/JobAccepted'
         '400':
           $ref: '#/components/responses/BadRequest400'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable503'
   /oscar/movies/reset-oscars-by-genre/{genre}:
     post:
       tags:
@@ -50,6 +54,8 @@ paths:
                 $ref: '#/components/schemas/JobAccepted'
         '400':
           $ref: '#/components/responses/BadRequest400'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable503'
   /oscar/jobs/{job-id}/status:
     get:
       tags:
@@ -76,6 +82,8 @@ paths:
           $ref: '#/components/responses/BadRequest400'
         '404':
           $ref: '#/components/responses/JobNotFound404'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable503'
 components:
   schemas:
     MovieGenre:
@@ -104,7 +112,7 @@ components:
           example: /oscar/jobs/3fa85f64-5717-4562-b3fc-2c963f66afa6/status
     JobStatus:
       type: object
-      description: Статус асинхронной операции.
+      description: Статус асинхронной операции. RUNNING включает ожидание повтора после временной ошибки или неподтверждённого сетевого исхода.
       additionalProperties: false
       required:
         - jobId
@@ -181,6 +189,7 @@ components:
             - 400
             - 404
             - 422
+            - 503
         code:
           type: string
           enum:
@@ -193,6 +202,7 @@ components:
             - NO_MATCHING_MOVIE
             - JOB_NOT_FOUND
             - VALIDATION_FAILED
+            - JOB_STORAGE_UNAVAILABLE
         message:
           type: string
         details:
@@ -200,6 +210,12 @@ components:
           items:
             $ref: '#/components/schemas/FieldError'
   responses:
+    StorageUnavailable503:
+      description: Хранилище джоб временно недоступно. При POST ответ 202 не был подтверждён.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     BadRequest400:
       description: Невалидный запрос.
       content:

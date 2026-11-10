@@ -12,30 +12,28 @@ import ru.itmo.oscar.model.JobAccepted;
 import ru.itmo.oscar.model.MovieGenre;
 import ru.itmo.oscar.service.InvalidParameterException;
 import ru.itmo.oscar.service.JobService;
-import ru.itmo.oscar.service.OscarService;
+import ru.itmo.oscar.model.JobType;
 
 @RestController
 @RequestMapping("/movies")
 public class OscarController {
 
     private final JobService jobService;
-    private final OscarService oscarService;
 
-    public OscarController(JobService jobService, OscarService oscarService) {
+    public OscarController(JobService jobService) {
         this.jobService = jobService;
-        this.oscarService = oscarService;
     }
 
     @PostMapping("/reward-r")
     public ResponseEntity<JobAccepted> rewardRMovies() {
-        return ResponseEntity.accepted().body(jobService.submit(oscarService::rewardRMovies));
+        return ResponseEntity.accepted().body(jobService.submit(JobType.REWARD_R, null));
     }
 
     @PostMapping("/reset-oscars-by-genre/{genre}")
     public ResponseEntity<JobAccepted> resetOscarsByGenre(@PathVariable("genre") String genre) {
         var parsedGenre = parseGenre(genre);
         return ResponseEntity.accepted()
-                .body(jobService.submit(() -> oscarService.resetOscarsByGenre(parsedGenre)));
+                .body(jobService.submit(JobType.RESET_BY_GENRE, parsedGenre));
     }
 
     private MovieGenre parseGenre(String value) {

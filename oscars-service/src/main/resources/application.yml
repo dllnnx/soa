@@ -1,9 +1,35 @@
 movies:
-  base-url: ${MOVIES_SERVICE_URL:http://movies:8080}
+  base-url: ${MOVIES_SERVICE_URL:https://payara:8181}
+  internal-token: ${MOVIES_INTERNAL_TOKEN}
   connect-timeout: ${MOVIES_CONNECT_TIMEOUT:3s}
-  read-timeout: ${MOVIES_READ_TIMEOUT:30s}
+  read-timeout: ${MOVIES_READ_TIMEOUT:10s}
+
+jobs:
+  poll-delay: ${JOBS_POLL_DELAY:1000}
+  lease-duration: ${JOBS_LEASE_DURATION:45s}
 
 spring:
+  jta:
+    enabled: false
+  datasource:
+    url: ${OSCARS_DB_URL:jdbc:postgresql://oscars-postgres:5432/oscars}
+    username: ${OSCARS_DB_USER:oscars}
+    password: ${OSCARS_DB_PASSWORD:oscars}
+    hikari:
+      maximum-pool-size: 4
+      connection-timeout: 3000
+      data-source-properties:
+        connectTimeout: 3
+        socketTimeout: 5
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      jakarta.persistence.query.timeout: 3000
+  sql:
+    init:
+      mode: always
   application:
     name: oscars-service
   jackson:
