@@ -11,8 +11,8 @@ export const FLOAT_MAX = 3.4028234663852886e38;
 export type NumberRule = { integer?: boolean; min?: number; max?: number; exclusiveMin?: boolean };
 export const numberRules = {
   double: {},
-  coordinateX: { min: -130, exclusiveMin: true },
-  coordinateY: { max: 388 },
+  coordinateX: { integer: true, min: -130, exclusiveMin: true },
+  coordinateY: { integer: true, max: 388 },
   height: { min: 0, exclusiveMin: true },
   oscars: { integer: true, min: 0, max: SAFE_LONG_MAX },
   budget: { integer: true, min: 1, max: INT_MAX },
@@ -64,8 +64,8 @@ export function validateMovieDraft(draft: MovieDraft): Record<string, string> {
 const filterRanges = [
   ['oscarsFrom', 'oscarsTo', numberRules.oscars],
   ['budgetFrom', 'budgetTo', numberRules.budget],
-  ['coordinateXFrom', 'coordinateXTo', numberRules.double],
-  ['coordinateYFrom', 'coordinateYTo', numberRules.double],
+  ['coordinateXFrom', 'coordinateXTo', { integer: true }],
+  ['coordinateYFrom', 'coordinateYTo', { integer: true }],
   ['heightFrom', 'heightTo', numberRules.double],
   ['locationXFrom', 'locationXTo', numberRules.float],
   ['locationYFrom', 'locationYTo', numberRules.int],

@@ -69,8 +69,6 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
                     <configuration>
-                        <!-- JDK 23+ не запускает процессоры с classpath по умолчанию —
-                             указываем путь процессора Lombok явно. -->
                         <annotationProcessorPaths>
                             <path>
                                 <groupId>org.projectlombok</groupId>

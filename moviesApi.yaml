@@ -100,6 +100,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AverageBudget'
+  /movies/total-oscars:
+    get:
+      tags:
+        - Movies
+      operationId: getTotalOscars
+      summary: Рассчитать суммарное количество Оскаров
+      description: Возвращает сумму oscarsCount по всей коллекции независимо от фильтров и текущей страницы.
+      responses:
+        '200':
+          description: Суммарное количество Оскаров рассчитано.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotalOscars'
   /movies/by-mpaa-rating:
     delete:
       tags:
@@ -623,6 +637,17 @@ components:
           format: double
           description: Среднее значение budget.
           minimum: 0
+    TotalOscars:
+      type: object
+      additionalProperties: false
+      required:
+        - totalOscars
+      properties:
+        totalOscars:
+          type: string
+          pattern: '^[0-9]+$'
+          description: Целая неотрицательная сумма в виде десятичной строки для передачи без переполнения и потери точности.
+          example: '42'
     FieldError:
       type: object
       additionalProperties: false

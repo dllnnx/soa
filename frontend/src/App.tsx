@@ -110,7 +110,7 @@ function App() {
       <main>
         {activeTab === 'movies'
           ? <MoviesPage revision={moviesRevision} showToast={setToast} showError={showError} />
-          : <OperationsPage jobs={jobs} currentJob={currentJob} resetGenre={resetGenre} setResetGenre={setResetGenre} runJob={runOscarJob} onInspected={recordInspectedJob} />}
+          : <OperationsPage jobs={jobs} resetGenre={resetGenre} setResetGenre={setResetGenre} runJob={runOscarJob} onInspected={recordInspectedJob} />}
       </main>
 
       {toast && <ToastCard toast={toast} onClose={() => setToast(null)} />}

@@ -52,6 +52,18 @@ test('non-finite doubles, malformed numbers and float overflow are rejected', ()
 });
 
 test('coordinate restrictions and required positive height still apply', () => {
+  for (const coordinateY of ['12,1', '12.1']) {
+    assert.equal(validateMovieDraft({ ...validDraft, coordinateY }).coordinateY, 'Введите целое число');
+  }
+  for (const coordinateY of ['-12', '0', '12', '388']) {
+    assert.deepEqual(validateMovieDraft({ ...validDraft, coordinateY }), {});
+  }
+  for (const coordinateX of ['12,1', '12.1']) {
+    assert.equal(validateMovieDraft({ ...validDraft, coordinateX }).coordinateX, 'Введите целое число');
+  }
+  for (const coordinateX of ['-129', '0', '12']) {
+    assert.deepEqual(validateMovieDraft({ ...validDraft, coordinateX }), {});
+  }
   assert.ok(validateMovieDraft({ ...validDraft, coordinateX: '-130' }).coordinateX);
   assert.ok(validateMovieDraft({ ...validDraft, coordinateY: '389' }).coordinateY);
   for (const screenwriterHeight of ['', '0', '-1', 'abc']) assert.ok(validateMovieDraft({ ...writerDraft, screenwriterHeight }).screenwriterHeight);
@@ -66,6 +78,12 @@ test('names accept 255 characters and reject longer or malformed names', () => {
 });
 
 test('numeric filters share the same type limits', () => {
+  assert.equal(validateFilters({ ...emptyFilters, coordinateXFrom: '12,1' }).coordinateXFrom, 'Введите целое число');
+  assert.equal(validateFilters({ ...emptyFilters, coordinateXTo: '12.1' }).coordinateXTo, 'Введите целое число');
+  assert.deepEqual(validateFilters({ ...emptyFilters, coordinateXFrom: '-129', coordinateXTo: '12' }), {});
+  assert.equal(validateFilters({ ...emptyFilters, coordinateYFrom: '12,1' }).coordinateYFrom, 'Введите целое число');
+  assert.equal(validateFilters({ ...emptyFilters, coordinateYTo: '12.1' }).coordinateYTo, 'Введите целое число');
+  assert.deepEqual(validateFilters({ ...emptyFilters, coordinateYFrom: '12', coordinateYTo: '388' }), {});
   assert.deepEqual(validateFilters({ ...emptyFilters, budgetFrom: '1000000000', budgetTo: '2147483647' }), {});
   for (const field of ['budgetFrom', 'budgetTo', 'locationYFrom', 'locationYTo']) assert.ok(validateFilters({ ...emptyFilters, [field]: '2147483648' })[field]);
   assert.ok(validateFilters({ ...emptyFilters, oscarsFrom: '9007199254740993' }).oscarsFrom);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, ArrowDown, ArrowUp, Award, Check, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronsUpDown, CircleDollarSign, Edit3, Film, Filter, LoaderCircle,
+  ChevronRight, ChevronsUpDown, Edit3, Film, Filter,
   MoreHorizontal, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, X,
 } from 'lucide-react';
 import type { Filters, Movie, MovieDraft, MoviePage, Person, ShowError, ShowToast, SortDirection } from '../types';
@@ -10,7 +10,7 @@ import {
   COUNTRIES, EYE_COLORS, HAIR_COLORS, MPAA, colorLabels, countryLabels, draftFromMovie,
   emptyDraft, emptyFilters, GENRES, genreLabels,
 } from '../labels';
-import { compactMoney, formatDate, formatMoney, initials } from '../format';
+import { compactMoney, formatDate, formatMoney, initials, truncateText } from '../format';
 import { ConfirmModal, Field, FilterSection, NumericInput, RangeFields } from '../components/ui';
 import { IDS_MAX_LENGTH, TEXT_MAX_LENGTH, numberRules, validateFilters, validateMovieDraft } from '../validation';
 
@@ -72,6 +72,7 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
   const [totalElements, setTotalElements] = useState(0);
   const [serverTotalPages, setServerTotalPages] = useState(0);
   const [averageBudget, setAverageBudget] = useState(0);
+  const [totalOscars, setTotalOscars] = useState('0');
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -81,7 +82,6 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
   const [confirmDelete, setConfirmDelete] = useState<Movie | null>(null);
 
   const totalPages = Math.max(1, serverTotalPages);
-  const totalOscars = movies.reduce((sum, item) => sum + BigInt(item.oscarsCount), 0n);
   const writers = useMemo(() => Array.from(new Map(movies.flatMap((item) => item.screenwriter ? [[item.screenwriter.name, item.screenwriter] as const] : [])).values()), [movies]);
   const writerTarget = deleteWriter || writers[0]?.name || '';
 
@@ -101,6 +101,15 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
       setAverageBudget(result.averageBudget);
     } catch (error) {
       showError('Не удалось получить средний бюджет', error);
+    }
+  };
+
+  const loadTotalOscars = async () => {
+    try {
+      const result = await api<{ totalOscars: string }>('/movies/total-oscars');
+      setTotalOscars(result.totalOscars);
+    } catch (error) {
+      showError('Не удалось получить суммарное количество Оскаров', error);
     }
   };
 
@@ -125,7 +134,7 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
     return () => window.clearTimeout(timer);
   }, [filters, page, size, sortField, sortDirection, revision]);
 
-  useEffect(() => { void loadAverage(); }, [revision]);
+  useEffect(() => { void loadAverage(); void loadTotalOscars(); }, [revision]);
 
   const saveMovie = async (draft: MovieDraft, editing?: Movie) => {
     let screenwriter: Person | null = null;
@@ -149,7 +158,7 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
       });
       setMovieModal(null);
       showToast({ kind: 'success', title: editing ? 'Фильм обновлён' : 'Фильм создан', message: `${item.name} · ID ${item.id}` });
-      await Promise.all([loadMovies(), loadAverage()]);
+      await Promise.all([loadMovies(), loadAverage(), loadTotalOscars()]);
     } catch (error) {
       showError(editing ? 'Не удалось обновить фильм' : 'Не удалось создать фильм', error);
     }
@@ -161,7 +170,7 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
       setConfirmDelete(null);
       setExpandedId(null);
       showToast({ kind: 'success', title: 'Фильм удалён', message: `${item.name} больше не в коллекции` });
-      await Promise.all([loadMovies(), loadAverage()]);
+      await Promise.all([loadMovies(), loadAverage(), loadTotalOscars()]);
     } catch (error) {
       showError('Не удалось удалить фильм', error);
     }
@@ -171,7 +180,7 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
     try {
       const result = await api<{ deletedCount: number }>(`/movies/by-mpaa-rating?mpaa-rating=${encodeURIComponent(rating)}`, { method: 'DELETE' });
       showToast({ kind: 'success', title: 'Массовое удаление завершено', message: `Удалено фильмов: ${result.deletedCount}` });
-      await Promise.all([loadMovies(), loadAverage()]);
+      await Promise.all([loadMovies(), loadAverage(), loadTotalOscars()]);
     } catch (error) {
       showError('Не удалось удалить фильмы', error);
     }
@@ -181,7 +190,7 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
     try {
       await api<void>(`/movies/by-screenwriter?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
       showToast({ kind: 'success', title: 'Фильм удалён', message: `Сценарист: ${name}` });
-      await Promise.all([loadMovies(), loadAverage()]);
+      await Promise.all([loadMovies(), loadAverage(), loadTotalOscars()]);
     } catch (error) {
       showError('Не удалось удалить фильм', error);
     }
@@ -211,10 +220,10 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
             </div>
           </div>
           <div className="danger-picker">
-            <span className="danger-picker-label">Удалить один фильм режиссера</span>
+            <span className="danger-picker-label">Удалить один фильм сценариста</span>
             <div className="danger-group">
-              <select aria-label="Сценарист для удаления" value={writerTarget} onChange={(event) => setDeleteWriter(event.target.value)}>
-                {writers.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+              <select aria-label="Сценарист для удаления" title={writerTarget} value={writerTarget} onChange={(event) => setDeleteWriter(event.target.value)}>
+                {writers.map((item) => <option key={item.name} value={item.name} title={item.name}>{truncateText(item.name, 28)}</option>)}
               </select>
               <button className="button danger" disabled={!writerTarget} onClick={() => { void deleteByWriter(writerTarget); }}>Взорвать</button>
             </div>
@@ -223,9 +232,9 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
       </section>
 
       <section className="metrics-grid">
-        <Metric icon={<Film />} label="Фильмов в выборке" value={String(totalElements)} note={`${movies.length} на текущей странице`} tone="ink" loading={loading} />
-        <Metric icon={<CircleDollarSign />} label="Средний бюджет" value={compactMoney(averageBudget)} note="по всей коллекции" tone="green" loading={loading} />
-        <Metric icon={<Award />} label="Оскаров на странице" value={String(totalOscars)} note={`${movies.filter((item) => item.oscarsCount > 0).length} награжденных фильмов`} tone="gold" loading={loading} />
+        <Metric label="Фильмов в выборке" value={String(totalElements)} />
+        <Metric label="Средний бюджет" value={compactMoney(averageBudget)} />
+        <Metric label="Суммарное количество Оскаров" value={totalOscars} />
       </section>
 
       <section className="table-card">
@@ -284,8 +293,8 @@ export function MoviesPage({ revision, showToast, showError }: { revision: numbe
   );
 }
 
-function Metric({ icon, label, value, note, tone, loading }: { icon: React.ReactNode; label: string; value: string; note: string; tone: string; loading?: boolean }) {
-  return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><small>{label}</small><b title={value}>{value}</b><p>{loading && <LoaderCircle className="spin" size={13} />}{note}</p></div></article>;
+function Metric({ label, value }: { label: string; value: string }) {
+  return <article className="metric"><small>{label}</small><b title={value}>{value}</b></article>;
 }
 
 function SortableTh({ label, field, current, direction, onSort }: { label: string; field: string; current: string; direction: SortDirection; onSort: (field: string) => void }) {
@@ -346,8 +355,8 @@ function FiltersDrawer({ value, onChange, onClose, onApply, onReset }: { value: 
       <FilterSection title="Числа и даты">
         <RangeFields label="Оскары" integer={true} error={errors.oscarsFrom || errors.oscarsTo} from={value.oscarsFrom} to={value.oscarsTo} onFrom={(v) => set('oscarsFrom', v)} onTo={(v) => set('oscarsTo', v)} />
         <RangeFields label="Бюджет, $" integer={true} error={errors.budgetFrom || errors.budgetTo} from={value.budgetFrom} to={value.budgetTo} onFrom={(v) => set('budgetFrom', v)} onTo={(v) => set('budgetTo', v)} />
-        <RangeFields label="Координата X" integer={false} error={errors.coordinateXFrom || errors.coordinateXTo} from={value.coordinateXFrom} to={value.coordinateXTo} onFrom={(v) => set('coordinateXFrom', v)} onTo={(v) => set('coordinateXTo', v)} />
-        <RangeFields label="Координата Y" integer={false} error={errors.coordinateYFrom || errors.coordinateYTo} from={value.coordinateYFrom} to={value.coordinateYTo} onFrom={(v) => set('coordinateYFrom', v)} onTo={(v) => set('coordinateYTo', v)} />
+        <RangeFields label="Координата X" integer={true} error={errors.coordinateXFrom || errors.coordinateXTo} from={value.coordinateXFrom} to={value.coordinateXTo} onFrom={(v) => set('coordinateXFrom', v)} onTo={(v) => set('coordinateXTo', v)} />
+        <RangeFields label="Координата Y" integer={true} error={errors.coordinateYFrom || errors.coordinateYTo} from={value.coordinateYFrom} to={value.coordinateYTo} onFrom={(v) => set('coordinateYFrom', v)} onTo={(v) => set('coordinateYTo', v)} />
         <Field label="Создан после" error={errors.creationAfter}><input type="datetime-local" value={value.creationAfter} onChange={(e) => set('creationAfter', e.target.value)} /></Field>
         <Field label="Создан до" error={errors.creationBefore}><input type="datetime-local" value={value.creationBefore} onChange={(e) => set('creationBefore', e.target.value)} /></Field>
       </FilterSection>
@@ -386,11 +395,11 @@ function MovieModal({ mode, movie, writers, onClose, onSave }: { mode: 'create' 
         <Field label="Рейтинг MPAA *"><select value={draft.mpaaRating} onChange={(e) => set('mpaaRating', e.target.value as MovieDraft['mpaaRating'])}>{MPAA.map((item) => <option key={item} value={item}>{item.replace('_', '-')}</option>)}</select></Field>
         <Field label="Оскары *" error={errors.oscarsCount}><NumericInput integer={true} value={draft.oscarsCount} onChange={(e) => set('oscarsCount', e.target.value)} /></Field>
         <Field label="Бюджет, $" hint={`До ${numberRules.budget.max}; необязательно`} error={errors.budget}><NumericInput integer={true} value={draft.budget} onChange={(e) => set('budget', e.target.value)} placeholder="165000000" /></Field>
-        <Field label="Координата X *" error={errors.coordinateX}><NumericInput integer={false} value={draft.coordinateX} onChange={(e) => set('coordinateX', e.target.value)} placeholder="> −130" /></Field>
-        <Field label="Координата Y *" error={errors.coordinateY}><NumericInput integer={false} value={draft.coordinateY} onChange={(e) => set('coordinateY', e.target.value)} placeholder="≤ 388" /></Field>
+        <Field label="Координата X *" error={errors.coordinateX}><NumericInput integer={true} value={draft.coordinateX} onChange={(e) => set('coordinateX', e.target.value)} placeholder="Целое число > −130" /></Field>
+        <Field label="Координата Y *" error={errors.coordinateY}><NumericInput integer={true} value={draft.coordinateY} onChange={(e) => set('coordinateY', e.target.value)} placeholder="Целое число ≤ 388" /></Field>
       </div></div>
       <div className="form-section"><h3>Сценарист</h3><div className="segmented"><button className={draft.screenwriterMode === 'existing' ? 'active' : ''} onClick={() => set('screenwriterMode', 'existing')}>Выбрать существующего</button><button className={draft.screenwriterMode === 'new' ? 'active' : ''} onClick={() => set('screenwriterMode', 'new')}>Создать нового</button><button className={draft.screenwriterMode === 'none' ? 'active' : ''} onClick={() => set('screenwriterMode', 'none')}>Не указывать</button></div>
-        {draft.screenwriterMode === 'existing' && <div className="writer-picker">{writers.map((writer) => <button key={writer.name} className={draft.existingScreenwriter === writer.name ? 'selected' : ''} onClick={() => set('existingScreenwriter', writer.name)}><span>{initials(writer.name)}</span><div><b>{writer.name}</b><small>{countryLabels[writer.nationality]} · {writer.height} см</small></div><i><Check size={14} /></i></button>)}</div>}
+        {draft.screenwriterMode === 'existing' && <div className="writer-picker">{writers.map((writer) => <button key={writer.name} aria-label={writer.name} className={draft.existingScreenwriter === writer.name ? 'selected' : ''} onClick={() => set('existingScreenwriter', writer.name)}><span>{initials(writer.name)}</span><div><b title={writer.name}>{truncateText(writer.name, 28)}</b><small>{countryLabels[writer.nationality]} · {writer.height} см</small></div><i><Check size={14} /></i></button>)}</div>}
         {errors.existingScreenwriter && <div className="validation-alert" role="alert">{errors.existingScreenwriter}</div>}
         {draft.screenwriterMode === 'new' && <div className="form-grid writer-form">
           <Field label="Имя *" hint={`${draft.screenwriterName.length}/${TEXT_MAX_LENGTH}`} wide error={errors.screenwriterName}><input maxLength={TEXT_MAX_LENGTH} value={draft.screenwriterName} onChange={(e) => set('screenwriterName', e.target.value)} /></Field>

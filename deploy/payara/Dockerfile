@@ -25,7 +25,6 @@ RUN keytool -importcert -noprompt -alias soa-lab-ca -file /tmp/ca.crt \
 COPY --from=build /root/.m2/repository/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar \
      /opt/payara/appserver/glassfish/domains/domain1/lib/ext/
 
-# Образ читает исходный post-boot файл из /opt/payara/config.
 COPY --chown=1000:1000 deploy/payara/post-boot-commands.asadmin \
      /opt/payara/config/post-boot-commands.asadmin
 

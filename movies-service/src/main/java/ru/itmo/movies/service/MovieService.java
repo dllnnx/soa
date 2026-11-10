@@ -14,6 +14,7 @@ import ru.itmo.movies.model.MovieFilter;
 import ru.itmo.movies.model.MovieInput;
 import ru.itmo.movies.model.MoviePage;
 import ru.itmo.movies.model.MpaaRating;
+import ru.itmo.movies.model.TotalOscars;
 import ru.itmo.movies.repository.MovieEntity;
 import ru.itmo.movies.repository.MovieEntityPage;
 import ru.itmo.movies.repository.MovieRepository;
@@ -59,6 +60,12 @@ public class MovieService {
     public AverageBudget getAverageBudget() {
         AverageBudget result = new AverageBudget();
         result.setAverageBudget(repository.averageBudget());
+        return result;
+    }
+
+    public TotalOscars getTotalOscars() {
+        TotalOscars result = new TotalOscars();
+        result.setTotalOscars(repository.totalOscars().toString());
         return result;
     }
 

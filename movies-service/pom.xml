@@ -54,6 +54,12 @@
             <version>RELEASE</version>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>org.eclipse.persistence</groupId>
+            <artifactId>org.eclipse.persistence.jpa</artifactId>
+            <version>4.0.4</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

@@ -14,6 +14,7 @@ import jakarta.ws.rs.core.Response;
 import ru.itmo.movies.model.AverageBudget;
 import ru.itmo.movies.model.DeleteResult;
 import ru.itmo.movies.model.MpaaRating;
+import ru.itmo.movies.model.TotalOscars;
 import ru.itmo.movies.service.MovieService;
 
 @Path("movies")
@@ -27,6 +28,12 @@ public class MovieSpecialResource {
     @Path("average-budget")
     public AverageBudget getAverageBudget() {
         return service.getAverageBudget();
+    }
+
+    @GET
+    @Path("total-oscars")
+    public TotalOscars getTotalOscars() {
+        return service.getTotalOscars();
     }
 
     @DELETE

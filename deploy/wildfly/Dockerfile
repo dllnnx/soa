@@ -34,8 +34,6 @@ RUN keytool -importcert -noprompt -alias soa-lab-ca -file /tmp/ca.crt \
 COPY --from=build /build/oscars-service/target/oscar.war \
      /opt/jboss/wildfly/standalone/deployments/
 
-# jboss-cli запускается выше от root и создаёт runtime-файлы от его имени.
-# Перед запуском сервера возвращаем standalone штатному пользователю образа.
 RUN chown -R jboss:root /opt/jboss/wildfly/standalone
 
 EXPOSE 8443

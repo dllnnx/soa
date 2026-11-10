@@ -10,7 +10,7 @@ const statusText = { PENDING: 'В очереди', RUNNING: 'Выполняет�
 
 type Inspection = { kind: 'ok'; response: JobResponse } | { kind: 'invalid' } | { kind: 'error'; message: string };
 
-export function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, runJob, onInspected }: { jobs: OscarJob[]; currentJob?: OscarJob; resetGenre: Genre | ''; setResetGenre: (genre: Genre | '') => void; runJob: (type: OscarJob['type'], genre?: Genre) => void; onInspected: (id: string, response: JobResponse) => void }) {
+export function OperationsPage({ jobs, resetGenre, setResetGenre, runJob, onInspected }: { jobs: OscarJob[]; resetGenre: Genre | ''; setResetGenre: (genre: Genre | '') => void; runJob: (type: OscarJob['type'], genre?: Genre) => void; onInspected: (id: string, response: JobResponse) => void }) {
   const [lookup, setLookup] = useState('');
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const inspect = async () => {
@@ -30,7 +30,7 @@ export function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, ru
   return <>
     <section className="page-heading operations-heading"><div><h1>Статус операций</h1></div>
       <div className="heading-actions operations-actions">
-        <TooltipButton className="button secondary" label="Наградить фильмы категории R" tooltip="Увеличить количество Оскаров на 1 у всех фильмов категории R" onClick={() => runJob('REWARD_R')} disabled={Boolean(currentJob)} />
+        <TooltipButton className="button secondary" label="Наградить фильмы категории R" tooltip="Увеличить количество Оскаров на 1 у всех фильмов категории R" onClick={() => runJob('REWARD_R')} />
         <div className="action-picker">
           <div className="action-picker-row">
             <span className="action-picker-label">Какой жанр вы ненавидите?</span>
@@ -39,14 +39,14 @@ export function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, ru
               {GENRES.map((genre) => <option key={genre} value={genre}>{genreLabels[genre]}</option>)}
             </select>
           </div>
-          <TooltipButton className="button primary" label="Уничтожить Оскары" tooltip="Отобрать все Оскары у всех фильмов режиссеров, снявших хоть один фильм в указанном жанре" onClick={() => runJob('RESET_BY_GENRE', resetGenre || undefined)} disabled={Boolean(currentJob) || !resetGenre} />
+          <TooltipButton className="button primary" label="Уничтожить Оскары" tooltip="Отобрать все Оскары у фильмов сценаристов, у которых есть хотя бы один фильм в указанном жанре" onClick={() => runJob('RESET_BY_GENRE', resetGenre || undefined)} disabled={!resetGenre} />
         </div>
       </div>
     </section>
     <section className="jobs-layout">
       <div className="jobs-card">
         <div className="card-heading"><div><h2>Журнал операций</h2><p>{jobs.length} записей</p></div></div>
-        <div className="jobs-list">
+        <div className="jobs-list" role="region" aria-label="Журнал операций" tabIndex={0}>
           {jobs.map((job) => <article className="job-row" key={job.id}><span className={`job-status-icon ${job.status}`}>{job.status === 'COMPLETED' ? <Check /> : job.status === 'FAILED' ? <AlertCircle /> : <LoaderCircle className={job.status === 'RUNNING' ? 'spin' : ''} />}</span><div className="job-main"><b>{job.label}</b><span className="mono">{job.id}</span></div><div className="job-time"><b>{new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(job.createdAt))}</b><span>{formatDate(job.createdAt)}</span></div><span className={`status-badge ${job.status}`}>{statusText[job.status]}</span><div className="job-result">{job.status === 'COMPLETED' ? <><b>{job.updatedCount}</b><span>изменено</span></> : job.status === 'FAILED' ? <><b>—</b><span>{job.errorMessage}</span></> : <><b>···</b><span>ожидание</span></>}</div></article>)}
         </div>
       </div>

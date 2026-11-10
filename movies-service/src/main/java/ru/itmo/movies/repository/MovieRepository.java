@@ -1,5 +1,7 @@
 package ru.itmo.movies.repository;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -81,6 +83,15 @@ public class MovieRepository {
                 .where(builder.isNotNull(root.get("budget")));
         Double average = entityManager.createQuery(criteria).getSingleResult();
         return average == null ? 0 : average;
+    }
+
+    public BigInteger totalOscars() {
+        CriteriaBuilder builder = entityManager.getCriteriaBuilder();
+        CriteriaQuery<BigDecimal> criteria = builder.createQuery(BigDecimal.class);
+        Root<MovieEntity> root = criteria.from(MovieEntity.class);
+        criteria.select(builder.function("SUM", BigDecimal.class, root.get("oscarsCount")));
+        BigDecimal total = entityManager.createQuery(criteria).getSingleResult();
+        return total == null ? BigInteger.ZERO : total.toBigIntegerExact();
     }
 
     public long deleteByMpaaRating(MpaaRating rating) {
