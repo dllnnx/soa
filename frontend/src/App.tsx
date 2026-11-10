@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import {
-  AlertCircle, ArrowDown, ArrowUp, Award, BarChart3, Check, ChevronDown, ChevronLeft,
+  AlertCircle, ArrowDown, ArrowUp, Award, Check, ChevronDown, ChevronLeft,
   ChevronRight, ChevronsUpDown, CircleDollarSign, Clapperboard, Clock3,
-  Edit3, ExternalLink, Film, Filter, LoaderCircle, MoreHorizontal, Plus,
-  RefreshCw, RotateCcw, Search, SlidersHorizontal, Trash2, UserRound, X,
+  Edit3, Film, Filter, LoaderCircle, MoreHorizontal, Plus,
+  RefreshCw, RotateCcw, Search, SlidersHorizontal, Trash2, X,
 } from 'lucide-react';
 import type { Filters, Genre, Movie, MovieDraft, OscarJob, Person } from './types';
 import {
@@ -96,15 +96,17 @@ function App() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [movieModal, setMovieModal] = useState<{ mode: 'create' | 'edit'; movie?: Movie } | null>(null);
-  const [toolsOpen, setToolsOpen] = useState(false);
+  const [deleteRating, setDeleteRating] = useState('R');
+  const [deleteWriter, setDeleteWriter] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<Movie | null>(null);
   const [toast, setToast] = useState<Toast>(null);
-  const [resetGenre, setResetGenre] = useState<Genre>('SCIENCE_FICTION');
+  const [resetGenre, setResetGenre] = useState<Genre | ''>('');
 
   const totalPages = Math.max(1, serverTotalPages);
   const totalOscars = movies.reduce((sum, item) => sum + item.oscarsCount, 0);
   const currentJob = jobs.find((job) => job.status === 'PENDING' || job.status === 'RUNNING');
   const writers = useMemo(() => Array.from(new Map(movies.flatMap((item) => item.screenwriter ? [[item.screenwriter.name, item.screenwriter] as const] : [])).values()), [movies]);
+  const writerTarget = deleteWriter || writers[0]?.name || '';
 
   useEffect(() => {
     if (!toast) return;
@@ -261,20 +263,10 @@ function App() {
     }
   };
 
-  const inspectJob = async (id: string) => {
-    try {
-      const response = await api<JobResponse>(`/oscar/jobs/${id}/status`);
-      const known = jobs.find((item) => item.id === id);
-      if (known) updateJob(id, response);
-      else setJobs((items) => [{ id, type: 'REWARD_R', label: 'Проверенная джоба', status: response.status, createdAt: new Date().toISOString(), updatedCount: response.result?.updatedCount, errorMessage: response.result?.errorMessage }, ...items]);
-      setToast({
-        kind: response.status === 'FAILED' ? 'error' : 'success',
-        title: statusText[response.status],
-        message: response.result?.errorMessage ?? `Обновлено фильмов: ${response.result?.updatedCount ?? 0}`,
-      });
-    } catch (error) {
-      showError('Не удалось получить статус джобы', error);
-    }
+  const recordInspectedJob = (id: string, response: JobResponse) => {
+    const known = jobs.find((item) => item.id === id);
+    if (known) updateJob(id, response);
+    else setJobs((items) => [{ id, type: 'REWARD_R', label: 'Проверенная джоба', status: response.status, createdAt: new Date().toISOString(), updatedCount: response.result?.updatedCount, errorMessage: response.result?.errorMessage }, ...items]);
   };
 
   const applyQuickSearch = (value: string) => {
@@ -302,13 +294,30 @@ function App() {
       <main>
         {activeTab === 'movies' ? (
           <>
-            <section className="page-heading">
-              <div>
+            <section className="page-heading movies-heading">
+              <div className="movies-title">
                 <h1>Фильмы</h1>
-              </div>
-              <div className="heading-actions">
-                <button className="button secondary" onClick={() => setToolsOpen(true)}><MoreHorizontal size={18} /> Дополнительно</button>
                 <button className="button primary" onClick={() => setMovieModal({ mode: 'create' })}><Plus size={18} /> Создать фильм</button>
+              </div>
+              <div className="movies-actions-row">
+                <div className="danger-picker">
+                  <span className="danger-picker-label">Удалить фильмы с рейтингом</span>
+                  <div className="danger-group">
+                    <select aria-label="Рейтинг MPAA для удаления" value={deleteRating} onChange={(event) => setDeleteRating(event.target.value)}>
+                      {MPAA.map((item) => <option key={item} value={item}>{item.replace('_', '-')}</option>)}
+                    </select>
+                    <button className="button danger" onClick={() => { void deleteByMpaa(deleteRating); }}>Взорвать</button>
+                  </div>
+                </div>
+                <div className="danger-picker">
+                  <span className="danger-picker-label">Удалить один фильм режиссера</span>
+                  <div className="danger-group">
+                    <select aria-label="Сценарист для удаления" value={writerTarget} onChange={(event) => setDeleteWriter(event.target.value)}>
+                      {writers.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+                    </select>
+                    <button className="button danger" disabled={!writerTarget} onClick={() => { void deleteByWriter(writerTarget); }}>Взорвать</button>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -364,13 +373,12 @@ function App() {
             </section>
           </>
         ) : (
-          <OperationsPage jobs={jobs} currentJob={currentJob} resetGenre={resetGenre} setResetGenre={setResetGenre} runJob={runOscarJob} inspectJob={inspectJob} onToast={setToast} />
+          <OperationsPage jobs={jobs} currentJob={currentJob} resetGenre={resetGenre} setResetGenre={setResetGenre} runJob={runOscarJob} onInspected={recordInspectedJob} />
         )}
       </main>
 
       {filtersOpen && <FiltersDrawer value={draftFilters} onChange={setDraftFilters} onClose={() => setFiltersOpen(false)} onApply={() => { setFilters(draftFilters); setPage(0); setFiltersOpen(false); }} onReset={() => setDraftFilters(emptyFilters)} />}
       {movieModal && <MovieModal mode={movieModal.mode} movie={movieModal.movie} writers={writers} onClose={() => setMovieModal(null)} onSave={saveMovie} />}
-      {toolsOpen && <ToolsModal movies={movies} writers={writers} averageBudget={averageBudget} onClose={() => setToolsOpen(false)} onDeleteMpaa={(rating) => { void deleteByMpaa(rating); }} onDeleteWriter={(name) => { void deleteByWriter(name); }} />}
       {confirmDelete && <ConfirmModal title="Удалить фильм?" text={`«${confirmDelete.name}» будет удалён из коллекции. Отменить это действие не получится.`} confirm="Удалить" onCancel={() => setConfirmDelete(null)} onConfirm={() => removeMovie(confirmDelete)} />}
       {toast && <div className={`toast ${toast.kind}`} role="status"><span>{toast.kind === 'success' ? <Check /> : toast.kind === 'error' ? <AlertCircle /> : <Clock3 />}</span><div><b>{toast.title}</b><p>{toast.message}</p></div><button onClick={() => setToast(null)}><X size={16} /></button></div>}
     </div>
@@ -419,19 +427,40 @@ function EmptyState({ onReset }: { onReset: () => void }) {
   return <div className="empty-state"><span><Film size={25} /></span><b>Ничего не найдено</b><p>Попробуйте изменить условия фильтрации.</p><button className="button secondary" onClick={onReset}><RotateCcw size={16} /> Сбросить фильтры</button></div>;
 }
 
-function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, runJob, inspectJob, onToast }: { jobs: OscarJob[]; currentJob?: OscarJob; resetGenre: Genre; setResetGenre: (genre: Genre) => void; runJob: (type: OscarJob['type'], genre?: Genre) => void; inspectJob: (id: string) => void; onToast: (toast: Toast) => void }) {
+type Inspection = { kind: 'ok'; response: JobResponse } | { kind: 'invalid' } | { kind: 'error'; message: string };
+
+function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, runJob, onInspected }: { jobs: OscarJob[]; currentJob?: OscarJob; resetGenre: Genre | ''; setResetGenre: (genre: Genre | '') => void; runJob: (type: OscarJob['type'], genre?: Genre) => void; onInspected: (id: string, response: JobResponse) => void }) {
   const [lookup, setLookup] = useState('');
-  const inspect = () => {
+  const [inspection, setInspection] = useState<Inspection | null>(null);
+  const inspect = async () => {
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuid.test(lookup)) return onToast({ kind: 'error', title: 'Невалидный идентификатор', message: 'Введите UUID джобы в формате xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' });
-    inspectJob(lookup);
+    if (!uuid.test(lookup)) {
+      setInspection({ kind: 'invalid' });
+      return;
+    }
+    try {
+      const response = await api<JobResponse>(`/oscar/jobs/${lookup}/status`);
+      setInspection({ kind: 'ok', response });
+      onInspected(lookup, response);
+    } catch (error) {
+      setInspection({ kind: 'error', message: error instanceof Error ? error.message : 'Неизвестная ошибка' });
+    }
   };
   return <>
-    <section className="page-heading operations-heading"><div><h1>Статус операций</h1></div><div className="heading-actions operations-actions"><TooltipButton className="button secondary" label="Наградить фильмы категории R" tooltip="Увеличить количество Оскаров на 1 у всех фильмов категории R" onClick={() => runJob('REWARD_R')} disabled={Boolean(currentJob)} /><div className="compound-action light"><select aria-label="Жанр для отбора Оскаров" value={resetGenre} onChange={(event) => setResetGenre(event.target.value as Genre)}>{GENRES.map((genre) => <option key={genre} value={genre}>{genreLabels[genre]}</option>)}</select><TooltipButton label="Отобрать Оскары у фильмов" tooltip="Обнулить количество Оскаров у всех фильмов, режиссёр которых снял хотя бы один фильм в выбранном жанре" onClick={() => runJob('RESET_BY_GENRE', resetGenre)} disabled={Boolean(currentJob)} /></div></div></section>
-    <section className="job-hero">
-      <div className={`job-hero-state ${currentJob ? 'running' : 'idle'}`}>{currentJob ? <LoaderCircle className="spin" /> : <Check />}</div>
-      <div><span>Текущая операция</span><h2>{currentJob?.label ?? 'Операции не выполняются'}</h2>{currentJob && <p>Джоба {currentJob.id} · {statusText[currentJob.status].toLowerCase()}</p>}</div>
-      {currentJob && <div className="job-progress"><span><i /></span><small>Сервис обрабатывает фильмы</small></div>}
+    <section className="page-heading operations-heading"><div><h1>Статус операций</h1></div>
+      <div className="heading-actions operations-actions">
+        <TooltipButton className="button secondary" label="Наградить фильмы категории R" tooltip="Увеличить количество Оскаров на 1 у всех фильмов категории R" onClick={() => runJob('REWARD_R')} disabled={Boolean(currentJob)} />
+        <div className="action-picker">
+          <div className="action-picker-row">
+            <span className="action-picker-label">Какой жанр вы ненавидите?</span>
+            <select aria-label="Жанр для отбора Оскаров" value={resetGenre} onChange={(event) => setResetGenre(event.target.value as Genre)}>
+              <option value="" disabled>Выберите жанр…</option>
+              {GENRES.map((genre) => <option key={genre} value={genre}>{genreLabels[genre]}</option>)}
+            </select>
+          </div>
+          <TooltipButton className="button primary" label="Уничтожить Оскары" tooltip="Отобрать все Оскары у всех фильмов режиссеров, снявших хоть один фильм в указанном жанре" onClick={() => runJob('RESET_BY_GENRE', resetGenre || undefined)} disabled={Boolean(currentJob) || !resetGenre} />
+        </div>
+      </div>
     </section>
     <section className="jobs-layout">
       <div className="jobs-card">
@@ -440,7 +469,24 @@ function OperationsPage({ jobs, currentJob, resetGenre, setResetGenre, runJob, i
           {jobs.map((job) => <article className="job-row" key={job.id}><span className={`job-status-icon ${job.status}`}>{job.status === 'COMPLETED' ? <Check /> : job.status === 'FAILED' ? <AlertCircle /> : <LoaderCircle className={job.status === 'RUNNING' ? 'spin' : ''} />}</span><div className="job-main"><b>{job.label}</b><span className="mono">{job.id}</span></div><div className="job-time"><b>{new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(job.createdAt))}</b><span>{formatDate(job.createdAt)}</span></div><span className={`status-badge ${job.status}`}>{statusText[job.status]}</span><div className="job-result">{job.status === 'COMPLETED' ? <><b>{job.updatedCount}</b><span>изменено</span></> : job.status === 'FAILED' ? <><b>—</b><span>{job.errorMessage}</span></> : <><b>···</b><span>ожидание</span></>}</div></article>)}
         </div>
       </div>
-      <aside className="lookup-card"><span className="lookup-icon"><Search size={20} /></span><h3>Проверить джобу</h3><p>Введите идентификатор из ответа <code>202 Accepted</code>.</p><label>ID операции<input value={lookup} onChange={(event) => setLookup(event.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></label><button className="button primary" onClick={inspect}>Проверить статус <ExternalLink size={16} /></button><div className="endpoint-note"><span>GET</span><code>/oscar/jobs/{'{job-id}'}/status</code></div></aside>
+      <aside className="lookup-card">
+        <h3>Проверить джобу</h3>
+        <p>Введите идентификатор из ответа <code>202 Accepted</code>.</p>
+        <label>ID операции<input value={lookup} onChange={(event) => { setLookup(event.target.value); setInspection(null); }} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></label>
+        <button className="button primary" onClick={() => void inspect()}>Проверить статус</button>
+        {inspection && (
+          <div className={`inspection-result ${inspection.kind === 'ok' ? inspection.response.status.toLowerCase() : inspection.kind}`}>
+            {inspection.kind === 'invalid' ? <b>Невалидный идентификатор</b>
+              : inspection.kind === 'error' ? <b>Не удалось получить статус</b>
+              : <b>Статус: {statusText[inspection.response.status]}</b>}
+            {inspection.kind === 'invalid' && <span>Введите UUID джобы в формате xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</span>}
+            {inspection.kind === 'error' && <span>{inspection.message}</span>}
+            {inspection.kind === 'ok' && inspection.response.status === 'COMPLETED' && <span>Обновлено фильмов: {inspection.response.result?.updatedCount ?? 0}</span>}
+            {inspection.kind === 'ok' && inspection.response.status === 'FAILED' && <span>{inspection.response.result?.errorMessage ?? 'Нет деталей ошибки'}</span>}
+            {inspection.kind === 'ok' && (inspection.response.status === 'PENDING' || inspection.response.status === 'RUNNING') && <span>Операция ещё выполняется — проверьте статус позже</span>}
+          </div>
+        )}
+      </aside>
     </section>
   </>;
 }
@@ -533,16 +579,6 @@ function MovieModal({ mode, movie, writers, onClose, onSave }: { mode: 'create' 
     </div>
     <div className="modal-footer"><button className="button secondary" onClick={onClose}>Отмена</button><button className="button primary" onClick={submit}>{mode === 'create' ? <><Plus size={17} /> Создать фильм</> : <><Check size={17} /> Сохранить изменения</>}</button></div>
   </div></div>;
-}
-
-function ToolsModal({ movies, writers, averageBudget, onClose, onDeleteMpaa, onDeleteWriter }: { movies: Movie[]; writers: Person[]; averageBudget: number; onClose: () => void; onDeleteMpaa: (rating: string) => void; onDeleteWriter: (name: string) => void }) {
-  const [rating, setRating] = useState('R');
-  const [writer, setWriter] = useState(writers[0]?.name ?? '');
-  return <div className="overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal tools-modal"><div className="modal-heading"><div><span className="modal-icon"><SlidersHorizontal size={19} /></span><div><h2>Дополнительно</h2><p>Операции с коллекцией фильмов</p></div></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><div className="modal-body tools-grid">
-    <article className="tool-item"><span className="tool-icon green"><BarChart3 /></span><div><small>GET /movies/average-budget</small><h3>Средний бюджет</h3><strong>{formatMoney(averageBudget)}</strong><p>Рассчитано по {movies.filter((item) => item.budget != null).length} фильмам с указанным бюджетом.</p></div></article>
-    <article className="tool-item danger-tool"><span className="tool-icon red"><Trash2 /></span><div><small>DELETE /movies/by-mpaa-rating</small><h3>Удалить по рейтингу</h3><p>Будут удалены все фильмы с выбранным MPAA.</p><div className="tool-action"><select value={rating} onChange={(e) => setRating(e.target.value)}>{MPAA.map((item) => <option key={item} value={item}>{item.replace('_', '-')}</option>)}</select><button onClick={() => onDeleteMpaa(rating)}>Удалить</button></div></div></article>
-    <article className="tool-item danger-tool"><span className="tool-icon orange"><UserRound /></span><div><small>DELETE /movies/by-screenwriter</small><h3>Удалить один фильм</h3><p>Удалится первый найденный фильм указанного сценариста.</p><div className="tool-action"><select value={writer} onChange={(e) => setWriter(e.target.value)}>{writers.map((item) => <option key={item.name}>{item.name}</option>)}</select><button onClick={() => onDeleteWriter(writer)}>Удалить</button></div></div></article>
-  </div><div className="modal-footer"><button className="button secondary" onClick={onClose}>Закрыть</button></div></div></div>;
 }
 
 function ConfirmModal({ title, text, confirm, onCancel, onConfirm }: { title: string; text: string; confirm: string; onCancel: () => void; onConfirm: () => void }) {
