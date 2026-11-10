@@ -4,7 +4,6 @@ import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.POST;
@@ -28,10 +27,10 @@ public class MovieFilterResource {
 
     @POST
     public MoviePage filter(
-            @NotNull @Valid MovieFilter filter,
+            @Valid MovieFilter filter,
             @QueryParam("page") @DefaultValue("0") @Min(0) @Max(100000) int page,
             @QueryParam("size") @DefaultValue("10") @Min(1) @Max(100) int size,
-            @QueryParam("sort") @DefaultValue("id,asc") SortOrder sort) {
-        return service.filter(filter, page, size, sort);
+            @QueryParam("sort") @DefaultValue("id,asc") String sort) {
+        return service.filter(filter, page, size, SortOrder.parse(sort));
     }
 }
