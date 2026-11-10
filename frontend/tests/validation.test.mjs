@@ -9,7 +9,7 @@ async function loadTs(path) {
   return import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 }
 const { numberError, numberRules, validateMovieDraft, validateFilters } = await loadTs('../src/validation.ts');
-const { emptyDraft, emptyFilters } = await loadTs('../src/mock.ts');
+const { emptyDraft, emptyFilters } = await loadTs('../src/labels.ts');
 const validDraft = { ...emptyDraft, name: 'Фильм', coordinateX: '1', coordinateY: '2', screenwriterMode: 'none' };
 const writerDraft = {
   ...validDraft, screenwriterMode: 'new', screenwriterName: 'Сценарист', screenwriterHeight: '180',

@@ -85,3 +85,10 @@ export interface OscarJob {
   updatedCount?: number;
   errorMessage?: string;
 }
+
+export type MoviePage = { page: number; size: number; totalElements: number; totalPages: number; content: Movie[] };
+export type JobResponse = { jobId: string; status: JobStatus; result?: { updatedCount?: number; errorMessage?: string } };
+export type Toast = { kind: 'success' | 'error' | 'info'; title: string; message: string } | null;
+export type ShowToast = (toast: NonNullable<Toast>) => void;
+export type ShowError = (title: string, error: unknown) => void;
+export type SortDirection = 'asc' | 'desc';

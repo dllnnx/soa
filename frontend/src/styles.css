@@ -101,7 +101,17 @@ main { width: min(1450px, calc(100% - 56px)); margin: 0 auto; padding: 45px 0 72
 .filter-summary button { border: 1px solid #dbd8d0; background: white; border-radius: 20px; padding: 4px 8px; display: flex; align-items: center; gap: 5px; font-size: 9px; }
 .filter-summary button.clear-all { border: 0; background: transparent; color: var(--red); font-weight: 700; }
 .table-scroll { overflow-x: auto; position: relative; }
+/* min-width таблицы = сумма ширин col-* ниже */
 table { width: 100%; border-collapse: collapse; min-width: 1232px; table-layout: fixed; }
+.table-scroll col.col-expander { width: 42px; }
+.table-scroll col.col-id { width: 90px; }
+.table-scroll col.col-name { width: 220px; }
+.table-scroll col.col-writer { width: 200px; }
+.table-scroll col.col-budget { width: 165px; }
+.table-scroll col.col-oscars { width: 160px; }
+.table-scroll col.col-mpaa { width: 70px; }
+.table-scroll col.col-date { width: 125px; }
+.table-scroll col.col-actions { width: 60px; }
 th { height: 42px; padding: 0 12px; background: #f7f5f0; color: #858682; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: .65px; white-space: nowrap; }
 th button { border: 0; background: transparent; padding: 0; display: flex; align-items: center; gap: 5px; color: inherit; text-transform: inherit; letter-spacing: inherit; font-weight: 700; font-size: inherit; }
 th button.sort-active { color: #242529; }
