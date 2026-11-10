@@ -347,7 +347,7 @@ function App() {
             <section className="metrics-grid">
               <Metric icon={<Film />} label="Фильмов в выборке" value={String(totalElements)} note={`${movies.length} на текущей странице`} tone="ink" loading={loading} />
               <Metric icon={<CircleDollarSign />} label="Средний бюджет" value={compactMoney(averageBudget)} note="по всей коллекции" tone="green" loading={loading} />
-              <Metric icon={<Award />} label="Оскаров на странице" value={String(totalOscars)} note={`${movies.filter((item) => item.oscarsCount > 0).length} награждённых`} tone="gold" loading={loading} />
+              <Metric icon={<Award />} label="Оскаров на странице" value={String(totalOscars)} note={`${movies.filter((item) => item.oscarsCount > 0).length} награжденных фильмов`} tone="gold" loading={loading} />
             </section>
 
             <section className="table-card">
