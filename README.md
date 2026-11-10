@@ -52,18 +52,17 @@ open https://localhost:3000
                      ┌──────────────▼──────┐   ┌────────▼─────────────┐
                      │  payara :8181       │◄──│  wildfly :8443       │
                      │  movies-service     │   │  oscars-service      │
-                     │  JAX-RS, только     │   │  Spring MVC REST,    │
-                     │  HTTPS (HTTP :8080  │   │  только HTTPS        │
-                     │  выключен)          │   │  context root /oscar │
-                     │  context root /     │   │                      │
-                     └──────────┬──────────┘   │  RestClient ходит в  │
-                                │              │  payara по HTTPS     │
-                                │              │  (доверие: ca.crt    │
-                                │              │   в truststore JVM)  │
-                     ┌──────────▼──────────┐   └──────────────────────┘
-                     │  postgres :5432     │
-                     │  БД movies          │
-                     └─────────────────────┘
+                     │  JAX-RS, только     │◄──┤  JobWorker: джобы из  │
+                     │  HTTPS (HTTP :8080  │   │  своей БД, команды по │
+                     │  выключен)          │   │  internal-API (HTTPS, │
+                     │  context root /     │   │  X-Internal-Token,    │
+                     │  /internal/operations│  │  доверие: ca.crt в    │
+                     └──────────┬──────────┘   │  truststore JVM)      │
+                                │              └───────┬───────────────┘
+                     ┌──────────▼──────────┐   ┌───────▼───────────────┐
+                     │  postgres :5432     │   │  oscars-postgres:5432 │
+                     │  БД movies          │   │  БД джоб oscars       │
+                     └─────────────────────┘   └───────────────────────┘
 ```
 
 Ключевые свойства стенда:
@@ -71,7 +70,7 @@ open https://localhost:3000
 - **Оба сервиса доступны только по HTTPS** — HTTP-листенеры (8080) у Payara и WildFly выключены на этапе конфигурации. Требование лабы «доступ по http запрещён» выполняется на уровне серверов приложений, а не фаерволом.
 - **Единая точка входа для пользователя — nginx** (`https://localhost:3000`). SPA, Swagger UI и оба API живут в одном origin, поэтому CORS не нужен вовсе.
 - **Мини-PKI**: собственный корневой CA (`ca.crt`) подписывает по одному серверному сертификату для каждого узла TLS (payara, wildfly, фронтенд). Один и тот же корень доверия используют nginx (проверка апстримов) и JVM WildFly (проверка payara при исходящих вызовах).
-- **Второй сервис вызывает первый по REST**: oscars-service не имеет своей БД, а оперирует фильмами через API movies-service — это и есть «сервис-ориентированность» лабы.
+- **Второй сервис вызывает первый по REST**: oscars-service оперирует фильмами только через API movies-service — публичный (то, что в `moviesApi.yaml`) и служебный internal-API (`internalApi.yaml`, аутентификация по заголовку `X-Internal-Token`). Это и есть «сервис-ориентированность» лабы.
 
 ## Состав репозитория
 
@@ -160,7 +159,7 @@ soa/
 - Имя файла `oscar.war` задаёт context root: все эндпоинты живут под **`/oscar`** (требование лабы).
 - Модели (`model/`) — hand-written record'ы, повторяющие `oscarApi.yaml`.
 - `jboss-deployment-structure.xml` выключает подсистему logging WildFly, чтобы логи не ломались конфликтом с логгером Spring.
-- Статусы джоб хранятся **в памяти** (`ConcurrentHashMap`) — перезапуск контейнера их стирает, это осознанное упрощение.
+- Джобы **персистентны**: их статусы хранятся в собственной БД сервиса (`oscars-postgres`, схема — `oscars-service/src/main/resources/schema.sql`), поэтому перезапуск контейнера их не теряет — «недоделанная» джоба доигрывается после старта.
 
 ### Вызов первого сервиса: `client/MoviesClient`
 
@@ -170,19 +169,21 @@ soa/
 - таймауты: connect `3s` (`MOVIES_CONNECT_TIMEOUT`), read `30s` (`MOVIES_READ_TIMEOUT`);
 - HTTPS «просто работает», потому что `ca.crt` импортирован в truststore JVM образа WildFly (см. [деплой](#wildfly-oscars-service)).
 
-`MoviesClient` умеет: выкачать все фильмы с фильтром (`POST /movies/filter`, **постранично по 100 штук** в цикле, пока не кончатся страницы), обновить фильм (`PUT /movies/{id}`). Любая ошибка ответа заворачивается в `MoviesServiceException("Сервис movies вернул HTTP …: <тело до 500 символов>")` — текст потом доезжает до пользователя через статус джобы.
+Массовые операции выполняются через **служебный internal-API** (спека — [`internalApi.yaml`](internalApi.yaml)): `POST /internal/operations` с заголовком `X-Internal-Token` (env `MOVIES_INTERNAL_TOKEN`, одинаковый у обоих сервисов) и телом `{jobId, type: REWARD_R|RESET_BY_GENRE, arguments}`. movies-service выполняет команду **атомарно в одной транзакции** и идемпотентно: повтор с тем же `jobId` возвращает уже сохранённый результат, а не выполняет её заново. Любая ошибка ответа заворачивается в `MoviesServiceException("Сервис movies вернул HTTP …: <тело до 500 символов>")` — текст потом доезжает до пользователя через статус джобы.
 
 ### Бизнес-операции (`service/OscarService`)
 
-- `rewardRMovies()` — найти все фильмы с `mpaaRating=R` и каждому `oscarsCount + 1`.
-- `resetOscarsByGenre(genre)` — найти сценаристов, у которых есть хоть один фильм в жанре, затем обнулить `oscarsCount` у **всех** их фильмов.
+- `REWARD_R` — всем фильмам с `mpaaRating=R` по +1 «Оскару».
+- `RESET_BY_GENRE(genre)` — обнулить `oscarsCount` у всех фильмов сценаристов, снявших хоть один фильм в указанном жанре.
+
+Обе операции — команды для internal-API; сами изменения фильмов выполняет movies-service.
 
 ### Асинхронные джобы: 202 Accepted + опрос статуса
 
 Операции массовые (N вызовов PUT по сети), поэтому API спроектировано асинхронным:
 
 1. `POST /oscar/movies/reward-r` (или `/oscar/movies/reset-oscars-by-genre/{genre}`) не выполняет работу, а ставит джобу и отвечает **`202 Accepted`** c телом `{jobId: UUID, statusUrl: "/oscar/jobs/<uuid>/status"}`.
-2. `service/JobService` кладёт статус `PENDING` в `ConcurrentHashMap` и выполняет операцию в `ThreadPoolTaskExecutor` (4 потока, очередь 100). Глобальный `ReentrantLock` гарантирует, что **одновременно выполняется максимум одна массовая операция** — конкурирующие джобы ждут в очереди в статусе PENDING.
+2. `service/JobWorker` по расписанию (`@Scheduled`, раз в секунду) забирает из БД свободную джобу (claim с lease-арендой) и выполняет её через internal-API; при сетевом сбое — повтор с тем же `jobId`, результат фиксируется транзакционно вместе с изменением фильмов. Перезапуск посреди операции не теряет и не дублирует её.
 3. `GET /oscar/jobs/{job-id}/status` возвращает `{jobId, status: PENDING|RUNNING|COMPLETED|FAILED, result: {updatedCount} | {errorMessage}}`. Несуществующий/некорректный UUID → 404/400.
 4. Фронтенд (и любой клиент) опрашивает statusUrl, пока не увидит терминальный статус.
 
@@ -207,19 +208,21 @@ soa/
 
 Поскольку спеки объявляют `servers: [{url: /}]`, а nginx проксирует `/movies` и `/oscar` в той же origin, кнопка **Try it out в Swagger UI работает из коробки** — запросы уходят на тот же `https://localhost:3000` и честно проходят через TLS-проверку nginx'а.
 
-## 5. PostgreSQL
+## 5. PostgreSQL — два инстанса
 
-Контейнер `postgres:16-alpine`, БД/пользователь/пароль — `movies/movies/movies`. При **первой** инициализации пустого тома `pgdata` выполняется [`deploy/postgres/init.sql`](deploy/postgres/init.sql) (механизм `docker-entrypoint-initdb.d`): создаётся таблица `movie` со всеми CHECK-ограничениями. Healthcheck `pg_isready` используется compose'ом: payara не стартует, пока БД не готова.
+**`postgres`** (база фильмов): `postgres:16-alpine`, БД/пользователь/пароль — `movies/movies/movies`. При **первой** инициализации пустого тома `pgdata` выполняется [`deploy/postgres/init.sql`](deploy/postgres/init.sql) (механизм `docker-entrypoint-initdb.d`): создаётся таблица `movie` со всеми CHECK-ограничениями. Healthcheck `pg_isready` используется compose'ом: payara не стартует, пока БД не готова. Схему таблицы операций (`V002__movie_operations.sql`) накатывает одноразовый контейнер `migrations` (psql с `ON_ERROR_STOP`), поэтому миграции применяются и к уже существующему тому.
+
+**`oscars-postgres`** (база джоб oscars-сервиса): отдельный `postgres:16-alpine` с томом `oscars-pgdata`; схему джоб создаёт `schema.sql` самого Spring-приложения. Подключение — env `OSCARS_DB_URL` у wildfly.
 
 ---
 
 ## Как деплоится каждый контейнер
 
-Ниже — что именно происходит при `docker compose up --build` для каждого сервиса. Все образы, кроме postgres и swagger-ui, собираются из исходников: контекст сборки — **корень репозитория** (поэтому в `COPY` путях типа `movies-service/src` и `deploy/certs/out/...`).
+Ниже — что именно происходит при `docker compose up --build` для каждого сервиса. Все образы, кроме postgres-инстансов, migrations и swagger-ui, собираются из исходников: контекст сборки — **корень репозитория** (поэтому в `COPY` путях типа `movies-service/src` и `deploy/certs/out/...`).
 
 ### postgres
 
-Готовый образ, ничего не собирается. Том `pgdata` переживает пересоздание контейнера; `init.sql` выполнится один раз. Наружу порт 5432 **не** публикуется — БД видна только внутри docker-сети.
+Готовый образ, ничего не собирается. Том `pgdata` переживает пересоздание контейнера; `init.sql` выполнится один раз, миграции `V002+` — при каждом `up` (идемпотентно через контейнер `migrations`). Наружу порт 5432 **не** публикуется — БД видна только внутри docker-сети.
 
 ### payara (movies-service)
 
@@ -351,22 +354,25 @@ location /movies { proxy_pass $movies_backend; ... }
 ### Сценарии взаимодействия
 
 - **CRUD/фильтры**: SPA → `fetch('/movies/...')` → nginx → `https://payara:8181/movies/...` → Postgres. Таблица перезагружается после каждой мутации; параллельно обновляется метрика среднего бюджета.
-- **Оскаровские операции**: SPA → `POST /oscar/movies/reward-r` → nginx → wildfly → мгновенно `202 {jobId, statusUrl}`. Далее фронт раз в секунду опрашивает `GET /oscar/jobs/{id}/status` (до 120 попыток), рисует статусы PENDING/RUNNING/COMPLETED/FAILED, после терминального статуса обновляет таблицу и средний бюджет; ошибка джобы показывается тостом.
-- **Ошибки валидации**: сервис отвечает `422` c `{message, details:[{field,message}]}`; `api()`-обёртка фронтенда превращает это в `Error` с текстом «message — field: message; …», который показывается пользователю. То же тело едят Swagger UI и любые другие клиенты.
+- **Оскаровские операции**: SPA → `POST /oscar/movies/reward-r` → nginx → wildfly → мгновенно `202 {jobId, statusUrl}`. Далее фронт опрашивает `GET /oscar/jobs/{id}/status` (с экспоненциальной задержкой и авто-восстановлением после сетевых сбоев — джоба хранится на сервере и никуда не денется), рисует статусы PENDING/RUNNING/COMPLETED/FAILED, после терминального статуса обновляет таблицу и средний бюджет; ошибка джобы показывается тостом.
+- **Ошибки валидации**: сервис отвечает `422` c `{message, details:[{field,message}]}`; `api()`-обёртка фронтенда превращает это в `ApiRequestError` с текстом «message — field: message; …», который показывается пользователю. То же тело едят Swagger UI и любые другие клиенты.
 
 ### oscars-service → movies-service (внутренний вызов)
 
 Вторая «связка» лабы — межсервисный REST-вызов, тоже по HTTPS с взаимным доверием через общий CA:
 
 ```text
-wildfly (RestClient, JDK HttpClient)
-   → https://payara:8181/movies/filter  (постранично, по 100)
-   → https://payara:8181/movies/{id}    (PUT на каждое обновление)
+wildfly (JobWorker → RestClient, JDK HttpClient)
+   → POST https://payara:8181/internal/operations
+     заголовок X-Internal-Token, тело {jobId, type, arguments}
+   ← 200 OperationResult (идемпотентно: повтор с тем же jobId
+      возвращает сохранённый результат одной транзакцией)
 ```
 
 - Адрес задаётся env `MOVIES_SERVICE_URL` (в compose — `https://payara:8181`); имя хоста `payara` из docker-DNS совпадает с SAN сертификата.
 - Доверие — потому что при сборке образа wildfly `ca.crt` импортирован в `cacerts` JVM: JDK-клиент проверяет цепочку payara против этого корня.
-- Если movies недоступен или вернул ошибку, джоба переходит в `FAILED` с текстом `MoviesServiceException` — ошибка не теряется и видна через статус джобы.
+- Служебный эндпоинт `/internal/operations` **не проксируется клиентским nginx** — снаружи он недоступен, токен знают только два сервиса.
+- Если movies недоступен или вернул 503, JobWorker повторяет команду с тем же `jobId`; при окончательной ошибке джоба переходит в `FAILED` с текстом `MoviesServiceException` — ошибка не теряется и видна через статус джобы.
 
 ---
 
@@ -552,7 +558,7 @@ docker compose -f deploy/docker-compose.yml up --build -d
 - **Apple Silicon**: образ `payara/server-full` публикуется только под `linux/amd64` — в compose для payara указан `platform: linux/amd64`; на M-чипах нужен Colima с Rosetta (`colima start --vz-rosetta`) или qemu (медленнее).
 - **Память**: JVM обоих серверов ограничена через env (`-Xmx256m`, SerialGC), иначе Payara + WildFly + Postgres + nginx не влезают в скромные лимиты учебной машины.
 - **Время старта payara**: WAR деплоится последней asadmin-командой после создания пула; «контейнер running» ≠ «API готов» — ждите записи в логах или просто минуту-другую.
-- **Джобы in-memory**: статусы живут в `ConcurrentHashMap` oscars-сервиса и пропадают при его перезапуске (сами изменения фильмов — нет, они в Postgres).
+- **Джобы персистентны**: статусы живут в БД `oscars-postgres` и переживают перезапуск контейнера (недовыполненная операция доиграется — идемпотентность гарантирует `jobId`). Изменения фильмов — в основной БД `movies`.
 - **Деплой джоб последовательно**: одновременно исполняется одна массовая операция (ReentrantLock), остальные ждут в PENDING — фронт на это рассчитан и блокирует кнопки.
 - **`oscars-service/Dockerfile` и `oscars-service/README.md`** — исторические артефакты эпохи «HTTP-only, без compose»; рабочий путь сборки — `deploy/wildfly/Dockerfile` (его и использует compose). Не путать.
 - **Пароли**: пароли хранилищ `changeit` и реквизиты БД `movies/movies` зашиты для учебного стенда; для чего-то серьёзнее их нужно вынести в env/секреты.
