@@ -1,4 +1,4 @@
-export type ApiErrorBody = { message?: string; details?: Array<{ field: string; message: string }> };
+type ApiErrorBody = { message?: string; details?: Array<{ field: string; message: string }> };
 
 export class ApiRequestError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
