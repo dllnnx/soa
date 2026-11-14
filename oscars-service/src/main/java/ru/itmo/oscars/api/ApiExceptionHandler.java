@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import ru.itmo.oscars.model.ApiError;
+import ru.itmo.oscars.service.BrokerUnavailableException;
 import ru.itmo.oscars.service.InvalidParameterException;
 import ru.itmo.oscars.service.JobNotFoundException;
 
@@ -26,6 +27,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(JobNotFoundException.class)
     public ResponseEntity<ApiError> jobNotFound(JobNotFoundException exception) {
         return response(HttpStatus.NOT_FOUND, "JOB_NOT_FOUND", exception.getMessage());
+    }
+
+    @ExceptionHandler(BrokerUnavailableException.class)
+    public ResponseEntity<ApiError> brokerUnavailable(BrokerUnavailableException exception) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "BROKER_UNAVAILABLE", exception.getMessage());
     }
 
     private ResponseEntity<ApiError> response(HttpStatus status, String code, String message) {

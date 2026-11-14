@@ -1,6 +1,5 @@
 package ru.itmo.oscars.repository;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -46,12 +45,6 @@ public class JobEntity {
     @Column(nullable = false)
     private int attempts;
 
-    @Column(name = "lease_token")
-    private UUID leaseToken;
-    @Column(name = "lease_until")
-    private Instant leaseUntil;
-    @Column(name = "next_attempt_at", nullable = false)
-    private Instant nextAttemptAt;
     @Column(name = "updated_count")
     private Long updatedCount;
     @Column(name = "error_message", columnDefinition = "text")
@@ -72,21 +65,14 @@ public class JobEntity {
         job.status = JobState.PENDING;
         job.createdAt = now;
         job.updatedAt = now;
-        job.nextAttemptAt = now;
         return job;
     }
 
-    public void claim(UUID token, Instant now, Duration lease) {
+    public void start(Instant now) {
         status = JobState.RUNNING;
         attempts = Math.incrementExact(attempts);
-        leaseToken = token;
-        leaseUntil = now.plus(lease);
         if (startedAt == null) startedAt = now;
         updatedAt = now;
-    }
-
-    public boolean ownedBy(UUID token) {
-        return status == JobState.RUNNING && token.equals(leaseToken);
     }
 
     public void complete(long count, Instant now) {
@@ -94,25 +80,13 @@ public class JobEntity {
         updatedCount = count;
         errorMessage = null;
         finishedAt = now;
-        release(now);
+        updatedAt = now;
     }
 
     public void fail(String message, Instant now) {
         status = JobState.FAILED;
         errorMessage = message;
         finishedAt = now;
-        release(now);
-    }
-
-    public void retry(String message, Instant now, Duration delay) {
-        errorMessage = message;
-        nextAttemptAt = now.plus(delay);
-        release(now);
-    }
-
-    private void release(Instant now) {
-        leaseToken = null;
-        leaseUntil = null;
         updatedAt = now;
     }
 }

@@ -40,6 +40,28 @@ services:
       timeout: 3s
       retries: 20
 
+  kafka:
+    image: apache/kafka:3.9.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms128m"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   payara:
     build:
       context: ..
@@ -71,6 +93,7 @@ services:
       MOVIES_INTERNAL_TOKEN: ${MOVIES_INTERNAL_TOKEN:-soa-local-internal-token}
       OSCARS_DB_URL: jdbc:postgresql://oscars-postgres:5432/oscars
       OSCARS_DB_PASSWORD: ${OSCARS_DB_PASSWORD:-oscars}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       JBOSS_JAVA_SIZING: "-Xms64m -Xmx256m -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8443:8443"
@@ -82,6 +105,8 @@ services:
       payara:
         condition: service_started
       oscars-postgres:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
 
   swagger-ui:
@@ -95,6 +120,18 @@ services:
     volumes:
       - ../moviesApi.yaml:/usr/share/nginx/html/moviesApi.yaml:ro
       - ../oscarApi.yaml:/usr/share/nginx/html/oscarApi.yaml:ro
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8085:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
 
   frontend:
     build: ../frontend

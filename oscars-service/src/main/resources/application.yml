@@ -4,10 +4,6 @@ movies:
   connect-timeout: ${MOVIES_CONNECT_TIMEOUT:3s}
   read-timeout: ${MOVIES_READ_TIMEOUT:10s}
 
-jobs:
-  poll-delay: ${JOBS_POLL_DELAY:1000}
-  lease-duration: ${JOBS_LEASE_DURATION:45s}
-
 spring:
   jta:
     enabled: false
@@ -35,3 +31,22 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 2000
+        request.timeout.ms: 2500
+        delivery.timeout.ms: 3000
+    consumer:
+      group-id: oscars-worker
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: ru.itmo.oscars.model
+        spring.json.value.default.type: ru.itmo.oscars.model.OperationCommand
