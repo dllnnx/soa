@@ -125,10 +125,11 @@ services:
     image: ghcr.io/kafbat/kafka-ui:latest
     environment:
       DYNAMIC_CONFIG_ENABLED: "true"
+      SERVER_SERVLET_CONTEXT_PATH: /kafka-ui
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
     ports:
-      - "8085:8080"
+      - "127.0.0.1:8085:8080"
     depends_on:
       kafka:
         condition: service_healthy
@@ -142,6 +143,7 @@ services:
       - ./certs/out/ca.crt:/etc/nginx/certs/ca.crt:ro
       - ./certs/out/payara.crt:/etc/nginx/certs/server.crt:ro
       - ./certs/out/payara.key:/etc/nginx/certs/server.key:ro
+      - ./kafka-ui.htpasswd:/etc/nginx/auth/kafka-ui.htpasswd:ro
     depends_on:
       - payara
       - wildfly
