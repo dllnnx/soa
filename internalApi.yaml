@@ -1,0 +1,102 @@
+openapi: 3.0.3
+info:
+  title: Movies internal operations API
+  version: 1.0.0
+  description: |
+    Служебный HTTPS API между Oscars и Movies. Не проксируется клиентским nginx.
+    Один jobId обозначает неизменную команду; тип и аргументы сверяются при каждом повторе.
+    Результат COMPLETED и изменение фильмов фиксируются одной транзакцией.
+    SQL timeout откатывает изменения попытки. PENDING/retryable=true разрешает повтор;
+    после исчерпания попыток или переполнения возвращается сохранённый FAILED.
+    Неопределённый сетевой исход и HTTP 503 требуют повтора с прежним jobId.
+    Терминальные результаты повторно не выполняются, даже если коллекция изменилась.
+servers:
+  - url: https://payara:8181
+security:
+  - InternalToken: []
+paths:
+  /internal/operations:
+    post:
+      operationId: executeMovieOperation
+      summary: Выполнить массовую команду или получить её сохранённый результат
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperationCommand'
+            examples:
+              reward:
+                value:
+                  jobId: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                  type: REWARD_R
+                  arguments: {}
+              reset:
+                value:
+                  jobId: 3fa85f64-5717-4562-b3fc-2c963f66afa7
+                  type: RESET_BY_GENRE
+                  arguments:
+                    genre: TRAGEDY
+      responses:
+        '200':
+          description: Подтверждённый результат либо подтверждённый откат повторяемой попытки.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResult'
+        '400':
+          description: Неверный UUID, тип или аргументы команды; окончательная ошибка.
+        '401':
+          description: Неверный или отсутствующий X-Internal-Token.
+        '409':
+          description: Этот jobId уже зарегистрирован с другим типом или аргументами; окончательная ошибка.
+        '503':
+          description: Результат не подтверждён. Повторить исходную команду с тем же jobId.
+components:
+  securitySchemes:
+    InternalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+  schemas:
+    OperationCommand:
+      type: object
+      required: [jobId, type]
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [REWARD_R, RESET_BY_GENRE]
+        arguments:
+          type: object
+          description: Для REWARD_R отсутствует или пустой объект; для RESET_BY_GENRE обязателен только genre.
+          additionalProperties: false
+          properties:
+            genre:
+              type: string
+              enum: [WESTERN, ADVENTURE, TRAGEDY, SCIENCE_FICTION]
+    OperationResult:
+      type: object
+      required: [jobId, status, retryable]
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED]
+        updatedCount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Присутствует при COMPLETED, включая повторный запрос.
+        errorCode:
+          type: string
+          enum: [NUMERIC_OVERFLOW, TEMPORARY_DATABASE_ERROR, RETRIES_EXHAUSTED]
+        errorMessage:
+          type: string
+        retryable:
+          type: boolean
+          description: true только при PENDING; FAILED и COMPLETED окончательны.
