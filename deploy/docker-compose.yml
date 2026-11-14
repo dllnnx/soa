@@ -49,7 +49,6 @@ services:
     environment:
       MOVIES_INTERNAL_TOKEN: ${MOVIES_INTERNAL_TOKEN:-soa-local-internal-token}
       MOVIES_OPERATION_TIMEOUT_MS: ${MOVIES_OPERATION_TIMEOUT_MS:-5000}
-      MOVIES_OPERATION_MAX_ATTEMPTS: ${MOVIES_OPERATION_MAX_ATTEMPTS:-8}
       JVM_ARGS: "-Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
     ports:
       - "8181:8181"
