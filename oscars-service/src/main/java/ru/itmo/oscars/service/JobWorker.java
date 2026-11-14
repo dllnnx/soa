@@ -3,61 +3,59 @@ package ru.itmo.oscars.service;
 import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import ru.itmo.oscars.client.MoviesClient;
 import ru.itmo.oscars.client.MoviesServiceException;
-import ru.itmo.oscars.repository.ClaimedJob;
-import ru.itmo.oscars.repository.JobRepository;
+import ru.itmo.oscars.model.ClaimedJob;
 
+@Slf4j
 @Component
 public class JobWorker {
-    private static final Logger LOG = LoggerFactory.getLogger(JobWorker.class);
-    private final JobRepository jobs;
-    private final MoviesClient movies;
+    private final JobService jobService;
+    private final MoviesClient moviesClient;
     private final Duration lease;
 
-    public JobWorker(JobRepository jobs, MoviesClient movies, @Value("${jobs.lease-duration}") Duration lease) {
+    public JobWorker(JobService jobService, MoviesClient moviesClient, @Value("${jobs.lease-duration}") Duration lease) {
         if (lease.isZero() || lease.isNegative()) throw new IllegalArgumentException("Lease must be positive");
-        this.jobs = jobs;
-        this.movies = movies;
+        this.jobService = jobService;
+        this.moviesClient = moviesClient;
         this.lease = lease;
     }
 
     @Scheduled(fixedDelayString = "${jobs.poll-delay:1000}", initialDelayString = "${jobs.initial-delay:1000}")
     public void tick() {
         try {
-            jobs.claim(lease).ifPresent(this::process);
+            jobService.claim(lease).ifPresent(this::process);
         } catch (RuntimeException exception) {
-            LOG.warn("Cannot process durable job; it will be recovered from PostgreSQL", exception);
+            log.warn("Cannot process durable job; it will be recovered from PostgreSQL", exception);
         }
     }
 
     private void process(ClaimedJob job) {
         try {
-            var result = movies.execute(job.command());
+            var result = moviesClient.execute(job.command());
 
             switch (result.status()) {
-                case COMPLETED -> logIfLeaseLost(job, "COMPLETED", jobs.complete(job, result.updatedCount()));
-                case FAILED -> logIfLeaseLost(job, "FAILED", jobs.fail(job, result.errorMessage()));
-                case PENDING -> logIfLeaseLost(job, "RETRY", jobs.retry(job, result.errorMessage(), retryDelay(job.attempts())));
+                case COMPLETED -> logIfLeaseLost(job, "COMPLETED", jobService.complete(job, result.updatedCount()));
+                case FAILED -> logIfLeaseLost(job, "FAILED", jobService.fail(job, result.errorMessage()));
+                case PENDING -> logIfLeaseLost(job, "RETRY", jobService.retry(job, result.errorMessage(), retryDelay(job.attempts())));
             }
 
         } catch (MoviesServiceException exception) {
             if (exception.retryable())
-                logIfLeaseLost(job, "RETRY", jobs.retry(job, exception.getMessage(), retryDelay(job.attempts())));
+                logIfLeaseLost(job, "RETRY", jobService.retry(job, exception.getMessage(), retryDelay(job.attempts())));
             else
-                logIfLeaseLost(job, "FAILED", jobs.fail(job, exception.getMessage()));
+                logIfLeaseLost(job, "FAILED", jobService.fail(job, exception.getMessage()));
         }
     }
 
     private void logIfLeaseLost(ClaimedJob job, String outcome, boolean applied) {
         if (!applied) {
-            LOG.warn("Lease for job {} expired before its {} outcome could be stored; the outcome is dropped and the job will be reprocessed", job.command().jobId(), outcome);
+            log.warn("Lease for job {} expired before its {} outcome could be stored; the outcome is dropped and the job will be reprocessed", job.command().jobId(), outcome);
         }
     }
 

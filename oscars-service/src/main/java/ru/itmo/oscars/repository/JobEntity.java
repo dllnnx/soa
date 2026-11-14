@@ -16,6 +16,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
 
 import ru.itmo.oscars.model.JobState;
@@ -27,6 +28,7 @@ import ru.itmo.oscars.model.JobType;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class JobEntity {
     @Id
+    @UuidGenerator
     private UUID id;
 
     @Enumerated(EnumType.STRING)
@@ -63,9 +65,8 @@ public class JobEntity {
     @Column(name = "finished_at")
     private Instant finishedAt;
 
-    static JobEntity pending(JobType type, Map<String, String> arguments, Instant now) {
+    public static JobEntity pendingJob(JobType type, Map<String, String> arguments, Instant now) {
         var job = new JobEntity();
-        job.id = UUID.randomUUID();
         job.type = type;
         job.arguments = new LinkedHashMap<>(arguments);
         job.status = JobState.PENDING;
@@ -75,7 +76,7 @@ public class JobEntity {
         return job;
     }
 
-    void claim(UUID token, Instant now, Duration lease) {
+    public void claim(UUID token, Instant now, Duration lease) {
         status = JobState.RUNNING;
         attempts = Math.incrementExact(attempts);
         leaseToken = token;
@@ -84,11 +85,11 @@ public class JobEntity {
         updatedAt = now;
     }
 
-    boolean ownedBy(UUID token) {
+    public boolean ownedBy(UUID token) {
         return status == JobState.RUNNING && token.equals(leaseToken);
     }
 
-    void complete(long count, Instant now) {
+    public void complete(long count, Instant now) {
         status = JobState.COMPLETED;
         updatedCount = count;
         errorMessage = null;
@@ -96,14 +97,14 @@ public class JobEntity {
         release(now);
     }
 
-    void fail(String message, Instant now) {
+    public void fail(String message, Instant now) {
         status = JobState.FAILED;
         errorMessage = message;
         finishedAt = now;
         release(now);
     }
 
-    void retry(String message, Instant now, Duration delay) {
+    public void retry(String message, Instant now, Duration delay) {
         errorMessage = message;
         nextAttemptAt = now.plus(delay);
         release(now);
