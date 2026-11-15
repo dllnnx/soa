@@ -18,12 +18,12 @@ import ru.itmo.movies.error.ErrorCode;
 @RequestMapping("internal/operations")
 public class InternalOperationsController {
 
-    private final OperationRepository operationRepository;
+    private final OperationService operationService;
     private final String expectedToken;
 
-    public InternalOperationsController(OperationRepository operationRepository,
+    public InternalOperationsController(OperationService operationService,
                                         @Value("${movies.internal-token:}") String expectedToken) {
-        this.operationRepository = operationRepository;
+        this.operationService = operationService;
         this.expectedToken = expectedToken;
     }
 
@@ -39,6 +39,6 @@ public class InternalOperationsController {
             throw new ApiException(ErrorCode.INTERNAL_UNAUTHORIZED, "Неверный токен внутреннего API");
         }
 
-        return operationRepository.execute(OperationCommand.from(request));
+        return operationService.execute(OperationCommand.from(request));
     }
 }
