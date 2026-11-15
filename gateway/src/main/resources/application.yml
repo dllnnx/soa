@@ -1,0 +1,30 @@
+server:
+  port: 8443
+  ssl:
+    certificate: ${GATEWAY_TLS_CERT:/run/secrets/gateway.crt}
+    certificate-private-key: ${GATEWAY_TLS_KEY:/run/secrets/gateway.key}
+    enabled: true
+
+spring:
+  application:
+    name: gateway
+  config:
+    import: configserver:${CONFIG_URL:http://config:8888}
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: movies
+              uri: lb://movies-service
+              predicates:
+                - Path=/movies/**
+            - id: oscar
+              uri: https://haproxy:8443
+              predicates:
+                - Path=/oscar/**
+          httpclient:
+            ssl:
+              trust-store: /run/secrets/truststore.p12
+              trust-store-password: changeit
+              trust-store-type: PKCS12

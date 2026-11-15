@@ -1,5 +1,5 @@
 movies:
-  base-url: ${MOVIES_SERVICE_URL:https://payara:8181}
+  base-url: ${MOVIES_SERVICE_URL:https://movies-service}
   internal-token: ${MOVIES_INTERNAL_TOKEN}
   connect-timeout: ${MOVIES_CONNECT_TIMEOUT:3s}
   read-timeout: ${MOVIES_READ_TIMEOUT:10s}

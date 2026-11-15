@@ -1,9 +1,10 @@
 package ru.itmo.oscars.config;
 
-import java.time.Duration;
 import java.net.http.HttpClient;
+import java.time.Duration;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -13,8 +14,14 @@ import org.springframework.web.client.RestClient;
 public class MoviesClientConfig {
 
     @Bean
+    @LoadBalanced
+    public RestClient.Builder loadBalancedRestClientBuilder() {
+        return RestClient.builder();
+    }
+
+    @Bean
     public RestClient moviesRestClient(
-            RestClient.Builder builder,
+            @LoadBalanced RestClient.Builder builder,
             @Value("${movies.base-url}") String baseUrl,
             @Value("${movies.internal-token}") String internalToken,
             @Value("${movies.connect-timeout}") Duration connectTimeout,

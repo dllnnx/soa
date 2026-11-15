@@ -26,4 +26,7 @@ spring:
 
 eureka:
   instance:
-    hostname: payara
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:payara}
+    non-secure-port-enabled: false
+    secure-port-enabled: true
+    secure-port: 8181
