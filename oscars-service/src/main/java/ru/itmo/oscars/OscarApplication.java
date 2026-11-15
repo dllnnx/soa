@@ -1,14 +1,12 @@
 package ru.itmo.oscars;
 
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 
 @SpringBootApplication
-public class OscarApplication extends SpringBootServletInitializer {
+public class OscarApplication {
 
-    @Override
-    protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
-        return builder.sources(OscarApplication.class);
+    public static void main(String[] args) {
+        SpringApplication.run(OscarApplication.class, args);
     }
 }

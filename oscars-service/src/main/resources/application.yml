@@ -4,6 +4,15 @@ movies:
   connect-timeout: ${MOVIES_CONNECT_TIMEOUT:3s}
   read-timeout: ${MOVIES_READ_TIMEOUT:10s}
 
+server:
+  port: 8443
+  servlet:
+    context-path: /oscar
+  ssl:
+    certificate: ${OSCARS_TLS_CERT:/run/secrets/oscars.crt}
+    certificate-private-key: ${OSCARS_TLS_KEY:/run/secrets/oscars.key}
+    enabled: true
+
 spring:
   jta:
     enabled: false
