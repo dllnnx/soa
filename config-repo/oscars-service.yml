@@ -1,0 +1,19 @@
+movies:
+  base-url: ${MOVIES_SERVICE_URL:https://payara:8181}
+  internal-token: ${MOVIES_INTERNAL_TOKEN}
+  connect-timeout: ${MOVIES_CONNECT_TIMEOUT:3s}
+  read-timeout: ${MOVIES_READ_TIMEOUT:10s}
+
+spring:
+  datasource:
+    url: ${OSCARS_DB_URL:jdbc:postgresql://oscars-postgres:5432/oscars}
+    username: ${OSCARS_DB_USER:oscars}
+    password: ${OSCARS_DB_PASSWORD:oscars}
+    hikari:
+      maximum-pool-size: 4
+      connection-timeout: 3000
+      data-source-properties:
+        connectTimeout: 3
+        socketTimeout: 5
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}

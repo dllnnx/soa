@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${MOVIES_DB_URL:jdbc:postgresql://postgres:5432/movies}
+    username: ${MOVIES_DB_USER:movies}
+    password: ${MOVIES_DB_PASSWORD:movies}
+    hikari:
+      maximum-pool-size: 4
+      connection-timeout: 3000
+      data-source-properties:
+        connectTimeout: 3
+        socketTimeout: 10
