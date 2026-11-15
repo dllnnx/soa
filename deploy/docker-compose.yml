@@ -91,35 +91,48 @@ services:
       movies-migrate:
         condition: service_completed_successfully
 
-  wildfly:
-    build:
+  oscars-1: &oscars
+    build: &oscars-build
       context: ..
       dockerfile: deploy/oscars/Dockerfile
     image: soa/oscars-service
-    environment:
+    environment: &oscars-env
       MOVIES_SERVICE_URL: https://payara:8181
       MOVIES_INTERNAL_TOKEN: ${MOVIES_INTERNAL_TOKEN:-soa-local-internal-token}
       OSCARS_DB_URL: jdbc:postgresql://oscars-postgres:5432/oscars
       OSCARS_DB_PASSWORD: ${OSCARS_DB_PASSWORD:-oscars}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-    ports:
-      - "8443:8443"
-    volumes:
+    volumes: &oscars-volumes
       - ./certs/out/wildfly.crt:/run/secrets/oscars.crt:ro
       - ./certs/out/wildfly.key:/run/secrets/oscars.key:ro
-    healthcheck:
+    healthcheck: &oscars-healthcheck
       test: ["CMD", "wget", "-q", "--no-check-certificate", "--spider", "https://127.0.0.1:8443/oscar/jobs/x/status"]
       interval: 5s
       timeout: 3s
       retries: 30
       start_period: 30s
-    depends_on:
+    depends_on: &oscars-depends
       payara:
         condition: service_started
       oscars-postgres:
         condition: service_healthy
       kafka:
         condition: service_healthy
+
+  oscars-2:
+    <<: *oscars
+    container_name: oscars-2
+
+  haproxy:
+    image: haproxy:3.0-alpine
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./certs/out/haproxy.pem:/usr/local/etc/haproxy/oscar.pem:ro
+    ports:
+      - "8443:8443"
+    depends_on:
+      - oscars-1
+      - oscars-2
 
   kafka-ui:
     image: ghcr.io/kafbat/kafka-ui:latest
@@ -149,7 +162,8 @@ services:
       - ./kafka-ui.htpasswd:/etc/nginx/auth/kafka-ui.htpasswd:ro
     depends_on:
       - payara
-      - wildfly
+      - oscars-1
+      - oscars-2
 
 volumes:
   pgdata:
