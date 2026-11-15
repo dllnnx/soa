@@ -1,0 +1,9 @@
+.git
+.idea
+**/node_modules
+**/dist
+**/target
+**/.DS_Store
+deploy/certs/out/*.key
+deploy/certs/out/*.srl
+deploy/certs/out/*.csr

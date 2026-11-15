@@ -1,14 +1,19 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-COPY package*.json ./
+COPY frontend/package*.json ./
 RUN npm ci
 
-COPY . .
-RUN npm run build
+COPY frontend/ .
+COPY moviesApi.yaml oscarApi.yaml ./
+RUN npm run build \
+ && cp -r node_modules/swagger-ui-dist dist/docs \
+ && cp swagger-index.html dist/docs/index.html \
+ && rm -rf dist/docs/es dist/docs/*.map \
+ && cp moviesApi.yaml oscarApi.yaml dist/docs/
 
 FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 443

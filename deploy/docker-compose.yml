@@ -55,12 +55,13 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_LOG_RETENTION_HOURS: 24
-      KAFKA_HEAP_OPTS: "-Xmx512m -Xms128m"
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms128m"
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/9092"]
       interval: 5s
-      timeout: 5s
+      timeout: 4s
       retries: 30
+      start_period: 20s
 
   payara:
     build:
@@ -109,20 +110,9 @@ services:
       kafka:
         condition: service_healthy
 
-  swagger-ui:
-    image: docker.swagger.io/swaggerapi/swagger-ui:v5.33.1
-    environment:
-      URLS: '[{"url":"/docs/moviesApi.yaml","name":"Movies Service"},{"url":"/docs/oscarApi.yaml","name":"Oscars Service"}]'
-      URLS_PRIMARY_NAME: "Movies Service"
-      DEEP_LINKING: "true"
-      DISPLAY_REQUEST_DURATION: "true"
-      TRY_IT_OUT_ENABLED: "true"
-    volumes:
-      - ../moviesApi.yaml:/usr/share/nginx/html/moviesApi.yaml:ro
-      - ../oscarApi.yaml:/usr/share/nginx/html/oscarApi.yaml:ro
-
   kafka-ui:
     image: ghcr.io/kafbat/kafka-ui:latest
+    profiles: ["debug"]
     environment:
       DYNAMIC_CONFIG_ENABLED: "true"
       SERVER_SERVLET_CONTEXT_PATH: /kafka-ui
@@ -135,7 +125,9 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ../frontend
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
     image: soa/frontend
     ports:
       - "443:443"
@@ -147,7 +139,6 @@ services:
     depends_on:
       - payara
       - wildfly
-      - swagger-ui
 
 volumes:
   pgdata:
