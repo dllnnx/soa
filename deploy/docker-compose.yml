@@ -63,6 +63,20 @@ services:
       retries: 30
       start_period: 20s
 
+  eureka:
+    build:
+      context: ..
+      dockerfile: deploy/eureka/Dockerfile
+    image: soa/eureka-server
+    ports:
+      - "127.0.0.1:8761:8761"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/8761"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
   payara:
     build:
       context: ..
@@ -86,6 +100,8 @@ services:
       retries: 30
       start_period: 30s
     depends_on:
+      eureka:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       movies-migrate:
@@ -106,12 +122,14 @@ services:
       - ./certs/out/wildfly.crt:/run/secrets/oscars.crt:ro
       - ./certs/out/wildfly.key:/run/secrets/oscars.key:ro
     healthcheck: &oscars-healthcheck
-      test: ["CMD", "wget", "-q", "--no-check-certificate", "--spider", "https://127.0.0.1:8443/oscar/jobs/x/status"]
+      test: ["CMD-SHELL", "wget -q --no-check-certificate -S --spider https://127.0.0.1:8443/oscar/jobs/not-a-uuid/status 2>&1 | grep -q 'HTTP/1.1 400'"]
       interval: 5s
       timeout: 3s
       retries: 30
       start_period: 30s
     depends_on: &oscars-depends
+      eureka:
+        condition: service_healthy
       payara:
         condition: service_started
       oscars-postgres:

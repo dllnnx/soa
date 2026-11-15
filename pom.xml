@@ -12,6 +12,7 @@
     <modules>
         <module>movies-service</module>
         <module>oscars-service</module>
+        <module>eureka-server</module>
     </modules>
 
     <properties>
@@ -20,6 +21,7 @@
 
         <jakarta.ee-api.version>10.0.0</jakarta.ee-api.version>
         <spring-boot.version>3.5.0</spring-boot.version>
+        <spring-cloud.version>2025.0.0</spring-cloud.version>
         <lombok.version>1.18.48</lombok.version>
         <openapi-generator.version>7.25.0</openapi-generator.version>
         <swagger-annotations.version>1.6.14</swagger-annotations.version>
@@ -48,6 +50,13 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
                 <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

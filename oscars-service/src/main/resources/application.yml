@@ -40,6 +40,7 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
     producer:
@@ -59,3 +60,8 @@ spring:
       properties:
         spring.json.trusted.packages: ru.itmo.oscars.model
         spring.json.value.default.type: ru.itmo.oscars.model.OperationCommand
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://eureka:8761/eureka}

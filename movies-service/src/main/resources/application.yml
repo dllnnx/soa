@@ -31,3 +31,10 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://eureka:8761/eureka}
+  instance:
+    hostname: payara
