@@ -2,7 +2,7 @@ package ru.itmo.movies.mapper;
 
 import java.util.List;
 
-import jakarta.enterprise.context.ApplicationScoped;
+import org.springframework.stereotype.Component;
 
 import ru.itmo.movies.model.Coordinates;
 import ru.itmo.movies.model.HairColor;
@@ -13,7 +13,7 @@ import ru.itmo.movies.model.MoviePage;
 import ru.itmo.movies.model.Person;
 import ru.itmo.movies.repository.MovieEntity;
 
-@ApplicationScoped
+@Component
 public class MovieMapper {
 
     public MovieEntity toEntity(MovieInput input) {

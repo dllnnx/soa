@@ -66,18 +66,25 @@ services:
   payara:
     build:
       context: ..
-      dockerfile: deploy/payara/Dockerfile
+      dockerfile: deploy/movies/Dockerfile
     image: soa/movies-service
-    platform: linux/amd64
     environment:
       MOVIES_INTERNAL_TOKEN: ${MOVIES_INTERNAL_TOKEN:-soa-local-internal-token}
       MOVIES_OPERATION_TIMEOUT_MS: ${MOVIES_OPERATION_TIMEOUT_MS:-5000}
-      JVM_ARGS: "-Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m -XX:+UseSerialGC"
+      MOVIES_DB_URL: jdbc:postgresql://postgres:5432/movies
+      MOVIES_DB_USER: movies
+      MOVIES_DB_PASSWORD: movies
     ports:
       - "8181:8181"
-      - "4848:4848"
     volumes:
-      - ./certs/out/keystore.jks:/run/secrets/payara.jks:ro
+      - ./certs/out/payara.crt:/run/secrets/movies.crt:ro
+      - ./certs/out/payara.key:/run/secrets/movies.key:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--no-check-certificate", "--spider", "https://127.0.0.1:8181/movies/1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy

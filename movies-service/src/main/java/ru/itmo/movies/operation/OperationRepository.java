@@ -1,7 +1,8 @@
 package ru.itmo.movies.operation;
 
-import jakarta.annotation.Resource;
-import jakarta.enterprise.context.ApplicationScoped;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 import ru.itmo.movies.error.ApiException;
 import ru.itmo.movies.error.ErrorCode;
 
@@ -12,12 +13,10 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
-@ApplicationScoped
+@Slf4j
+@Component
 public class OperationRepository {
-    private static final Logger LOG = Logger.getLogger(OperationRepository.class.getName());
     private static final long OPERATIONS_LOCK = 1936681575L;
 
     private static final String SQLSTATE_QUERY_CANCELED = "57014";
@@ -35,19 +34,15 @@ public class OperationRepository {
               AND EXISTS (SELECT 1 FROM movie AS source WHERE source.genre = ? AND source.sw_name = target.sw_name)
             """;
 
-    @Resource(lookup = "jdbc/MoviesOperationsDS")
-    private DataSource source;
+    private final DataSource source;
     private final Duration timeout;
 
-    public OperationRepository() {
-        this(null, Duration.ofMillis(Long.parseLong(System.getenv().getOrDefault("MOVIES_OPERATION_TIMEOUT_MS", "5000"))));
-    }
-
-    public OperationRepository(DataSource source, Duration timeout) {
-        if (timeout.isNegative() || timeout.isZero())
+    public OperationRepository(DataSource source,
+                               @Value("${movies.operation-timeout-ms:5000}") long timeoutMillis) {
+        if (timeoutMillis <= 0)
             throw new IllegalArgumentException("Invalid operation limits");
         this.source = source;
-        this.timeout = timeout;
+        this.timeout = Duration.ofMillis(timeoutMillis);
     }
 
     public OperationResult execute(OperationCommand command) {
@@ -76,7 +71,7 @@ public class OperationRepository {
                 throw exception;
             }
         } catch (SQLException exception) {
-            LOG.log(Level.WARNING, "Operation outcome must be retried/reconciled: " + command.jobId(), exception);
+            log.warn("Operation outcome must be retried/reconciled: " + command.jobId(), exception);
             throw unavailable();
         }
     }
@@ -100,7 +95,7 @@ public class OperationRepository {
                 throw exception;
             }
         } catch (SQLException exception) {
-            LOG.log(Level.WARNING, "Cannot register operation " + command.jobId(), exception);
+            log.warn("Cannot register operation " + command.jobId(), exception);
             throw unavailable();
         }
     }
@@ -158,7 +153,7 @@ public class OperationRepository {
             markFailed(connection, command.jobId(), "NUMERIC_OVERFLOW", message);
             return new OperationResult(command.jobId(), OperationStatus.FAILED, null, "NUMERIC_OVERFLOW", message, false);
         }
-        LOG.log(Level.WARNING, "Operation attempt failed; the caller should retry with the same jobId: "
+        log.warn("Operation attempt failed; the caller should retry with the same jobId: "
                 + command.jobId(), exception);
         return new OperationResult(command.jobId(), OperationStatus.PENDING, null, "TEMPORARY_DATABASE_ERROR",
                 "Временная ошибка базы данных; фильмы не изменены", true);

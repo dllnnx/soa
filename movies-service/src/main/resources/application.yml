@@ -1,0 +1,33 @@
+movies:
+  internal-token: ${MOVIES_INTERNAL_TOKEN}
+  operation-timeout-ms: ${MOVIES_OPERATION_TIMEOUT_MS:5000}
+
+server:
+  port: 8181
+  ssl:
+    certificate: ${MOVIES_TLS_CERT:/run/secrets/movies.crt}
+    certificate-private-key: ${MOVIES_TLS_KEY:/run/secrets/movies.key}
+    enabled: true
+
+spring:
+  application:
+    name: movies-service
+  datasource:
+    url: ${MOVIES_DB_URL:jdbc:postgresql://postgres:5432/movies}
+    username: ${MOVIES_DB_USER:movies}
+    password: ${MOVIES_DB_PASSWORD:movies}
+    hikari:
+      maximum-pool-size: 4
+      connection-timeout: 3000
+      data-source-properties:
+        connectTimeout: 3
+        socketTimeout: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      jakarta.persistence.query.timeout: 3000
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true

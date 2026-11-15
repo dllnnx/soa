@@ -2,8 +2,8 @@ package ru.itmo.movies.web;
 
 import java.util.List;
 
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 
 import ru.itmo.movies.error.ErrorCode;
 import ru.itmo.movies.error.Error;
@@ -14,14 +14,13 @@ public final class ErrorResponses {
     private ErrorResponses() {
     }
 
-    public static Response of(int status, ErrorCode code, String message) {
+    public static ResponseEntity<Error> of(int status, ErrorCode code, String message) {
         return of(status, code, message, null);
     }
 
-    public static Response of(int status, ErrorCode code, String message, List<FieldError> details) {
-        return Response.status(status)
-                .type(MediaType.APPLICATION_JSON)
-                .entity(new Error(status, code, message, details))
-                .build();
+    public static ResponseEntity<Error> of(int status, ErrorCode code, String message, List<FieldError> details) {
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new Error(status, code, message, details));
     }
 }
