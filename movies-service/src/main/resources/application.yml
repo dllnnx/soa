@@ -24,6 +24,19 @@ spring:
     deserialization:
       fail-on-unknown-properties: true
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+
 eureka:
   instance:
     hostname: ${EUREKA_INSTANCE_HOSTNAME:payara}

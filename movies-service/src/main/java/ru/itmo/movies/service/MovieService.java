@@ -75,7 +75,7 @@ public class MovieService {
 
     public DeleteResult deleteByMpaaRating(MpaaRating rating) {
         DeleteResult result = new DeleteResult();
-        result.setDeletedCount(repository.deleteByMpaaRating(rating));
+        result.setDeletedCount((long) repository.deleteByMpaaRating(rating));
         return result;
     }
 

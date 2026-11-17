@@ -44,3 +44,16 @@ spring:
       properties:
         spring.json.trusted.packages: ru.itmo.oscars.model
         spring.json.value.default.type: ru.itmo.oscars.model.OperationCommand
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db

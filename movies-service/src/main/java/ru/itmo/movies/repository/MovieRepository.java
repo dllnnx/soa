@@ -20,7 +20,7 @@ public interface MovieRepository extends JpaRepository<MovieEntity, Long>, JpaSp
 
     @Modifying
     @Query("delete from MovieEntity m where m.mpaaRating = :rating")
-    long deleteByMpaaRating(@Param("rating") MpaaRating rating);
+    int deleteByMpaaRating(@Param("rating") MpaaRating rating);
 
     Optional<MovieEntity> findFirstByScreenwriterNameOrderByIdAsc(String screenwriterName);
 }
