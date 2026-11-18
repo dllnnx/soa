@@ -131,6 +131,13 @@ services:
       <<: *movies-env
       EUREKA_INSTANCE_HOSTNAME: movies-2
 
+  movies-3:
+    <<: *movies
+    container_name: movies-3
+    environment:
+      <<: *movies-env
+      EUREKA_INSTANCE_HOSTNAME: movies-3
+
   gateway:
     build:
       context: ..
