@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import ru.itmo.movies.model.MpaaRating;
+import ru.itmo.movies.model.MovieGenre;
 
 public interface MovieRepository extends JpaRepository<MovieEntity, Long>, JpaSpecificationExecutor<MovieEntity> {
 
@@ -23,4 +24,22 @@ public interface MovieRepository extends JpaRepository<MovieEntity, Long>, JpaSp
     int deleteByMpaaRating(@Param("rating") MpaaRating rating);
 
     Optional<MovieEntity> findFirstByScreenwriterNameOrderByIdAsc(String screenwriterName);
+
+    @Modifying
+    @Query("""
+            update MovieEntity movie set movie.oscarsCount = movie.oscarsCount + 1
+            where movie.mpaaRating = :rating
+            """)
+    int rewardByMpaaRating(@Param("rating") MpaaRating rating);
+
+    @Modifying
+    @Query("""
+            update MovieEntity target set target.oscarsCount = 0
+            where target.oscarsCount > 0 and target.screenwriterName is not null
+              and exists (
+                  select 1 from MovieEntity source
+                  where source.genre = :genre and source.screenwriterName = target.screenwriterName
+            )
+            """)
+    int resetOscarsByGenre(@Param("genre") MovieGenre genre);
 }

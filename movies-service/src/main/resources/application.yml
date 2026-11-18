@@ -14,12 +14,12 @@ spring:
     name: movies-service
   config:
     import: configserver:${CONFIG_URL:http://config:8888}
+  transaction:
+    default-timeout: 3s
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-    properties:
-      jakarta.persistence.query.timeout: 3000
   jackson:
     deserialization:
       fail-on-unknown-properties: true
