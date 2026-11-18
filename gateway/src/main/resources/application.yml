@@ -28,3 +28,7 @@ spring:
               trust-store: /run/secrets/truststore.p12
               trust-store-password: changeit
               trust-store-type: PKCS12
+
+logging:
+  level:
+    org.springframework.cloud.gateway.filter.ReactiveLoadBalancerClientFilter: TRACE
